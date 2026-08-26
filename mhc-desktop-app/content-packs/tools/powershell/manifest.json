@@ -1,0 +1,21 @@
+{
+  "name": "powershell",
+  "description": "Execute a Windows PowerShell command and stream its stdout. Hard cap 10 minutes per call; default 60s. Use this for anything you'd normally do in a Windows terminal: file ops, registry queries, service control, package management, network diagnostics, etc. Cancellation / timeout both kill the running PowerShell process — there is no orphan child after the call returns.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "command": {
+        "type": "string",
+        "description": "The exact PowerShell expression to run. Passed verbatim to `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command -`, so stdin-quoting rules apply (use double-quoted strings, escape embedded double quotes as `\"\"`). Cannot be empty."
+      },
+      "timeout": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 600,
+        "default": 60,
+        "description": "Maximum wall-clock seconds to wait for the command to finish. Required. Default 60, hard cap 600. The PowerShell process is killed if this elapses before the command returns."
+      }
+    },
+    "required": ["command", "timeout"]
+  }
+}

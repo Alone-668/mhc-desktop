@@ -1,0 +1,28 @@
+[project]
+name = "mhc-desktop"
+version = "0.1.0"
+description = "mhc-desktop — Skill/MCP client (Electron host + Vue SPA + FastAPI backend + deploy shell)"
+requires-python = ">=3.12"
+
+[tool.uv.sources]
+mhc-desktop-backend = { workspace = true }
+mhc-desktop-deploy = { workspace = true }
+
+[tool.uv.workspace]
+members = [
+    "mhc-desktop-backend",
+    "mhc-desktop-deploy",
+]
+
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true
+
+[dependency-groups]
+dev = [
+    "ruff>=0.9.0",
+    "pyright>=1.1.390",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.28",
+]

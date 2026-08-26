@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 360" fill="none" font-family="system-ui, sans-serif">
+  <!-- Decorative gradient backdrop matching the card media colour. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5b8def"/>
+      <stop offset="100%" stop-color="#3b6ed8"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#f4f6fb"/>
+    </linearGradient>
+    <linearGradient id="badge" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffd966"/>
+      <stop offset="100%" stop-color="#ffb347"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background. Pure SVG, no external assets so the file can
+       ship in public/onboarding and serve through both vite (dev)
+       and Electron's asar (prod) without a copy step. -->
+  <rect width="480" height="360" fill="url(#bg)"/>
+  <circle cx="60" cy="60" r="40" fill="rgba(255,255,255,0.08)"/>
+  <circle cx="420" cy="300" r="60" fill="rgba(255,255,255,0.08)"/>
+
+  <!-- Stack of three paper-like cards, fanned. The back card is
+       drawn first so the front card lands on top of it. Each
+       card has a coloured accent strip + lines to suggest
+       instructions in a SKILL.md file. -->
+  <g transform="translate(76 64) rotate(-6 130 110)">
+    <rect width="260" height="190" rx="14" fill="rgba(255,255,255,0.3)"/>
+  </g>
+  <g transform="translate(94 56) rotate(2 130 110)">
+    <rect width="260" height="190" rx="14" fill="rgba(255,255,255,0.55)"/>
+  </g>
+  <g transform="translate(112 48)">
+    <!-- Card body -->
+    <rect width="260" height="190" rx="14" fill="url(#card)" stroke="rgba(0,0,0,0.06)"/>
+    <!-- Top accent strip -->
+    <rect width="260" height="6" rx="3" fill="#5b8def"/>
+    <!-- Header text -->
+    <text x="20" y="42" font-size="18" font-weight="700" fill="#1f2937">SKILL.md</text>
+    <!-- Body lines. Each line is a thin rounded rect; no actual
+         text so the illustration stays language-neutral. -->
+    <rect x="20" y="64"  width="180" height="8" rx="4" fill="#d1d5db"/>
+    <rect x="20" y="82"  width="220" height="8" rx="4" fill="#d1d5db"/>
+    <rect x="20" y="100" width="160" height="8" rx="4" fill="#d1d5db"/>
+    <rect x="20" y="124" width="220" height="8" rx="4" fill="#e5e7eb"/>
+    <rect x="20" y="142" width="200" height="8" rx="4" fill="#e5e7eb"/>
+    <rect x="20" y="160" width="140" height="8" rx="4" fill="#e5e7eb"/>
+  </g>
+
+  <!-- Floating "skill" pill badges in the foreground. Two of
+       them, slightly tilted, ride along with the front card to
+       suggest the per-message attachment metaphor. -->
+  <g transform="translate(56 220) rotate(-8)">
+    <rect width="148" height="44" rx="22" fill="rgba(255,255,255,0.95)"/>
+    <circle cx="22" cy="22" r="10" fill="#5b8def"/>
+    <rect x="42" y="14" width="84" height="6" rx="3" fill="#9ca3af"/>
+    <rect x="42" y="26" width="56" height="6" rx="3" fill="#d1d5db"/>
+  </g>
+  <g transform="translate(280 244) rotate(7)">
+    <rect width="148" height="44" rx="22" fill="url(#badge)"/>
+    <circle cx="22" cy="22" r="10" fill="#ffffff"/>
+    <rect x="42" y="14" width="84" height="6" rx="3" fill="#7c5a17"/>
+    <rect x="42" y="26" width="56" height="6" rx="3" fill="#a3803a"/>
+  </g>
+
+  <!-- Connecting thread from front card to badges. Two faint
+       dashed arcs to remind the viewer that the badges are
+       *attached* to the file, not floating independently. -->
+  <path d="M 200 240 Q 140 240 130 250" stroke="rgba(255,255,255,0.5)" stroke-width="2" stroke-dasharray="4 4" fill="none"/>
+  <path d="M 320 250 Q 360 260 348 270" stroke="rgba(255,255,255,0.5)" stroke-width="2" stroke-dasharray="4 4" fill="none"/>
+</svg>

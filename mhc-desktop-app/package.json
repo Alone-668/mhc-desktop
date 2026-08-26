@@ -1,0 +1,82 @@
+{
+  "name": "mhc-desktop-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron host for mhc-desktop — Skill/MCP client shell.",
+  "main": "main.js",
+  "scripts": {
+    "build": "tsc",
+    "build:frontend": "cd ../mhc-desktop-frontend && npm install --cache ../../.npm-cache && npm run build",
+    "start": "npm run build && electron .",
+    "dev": "tsc && electron . --mhc-dev-url http://127.0.0.1:5180",
+    "package": "npm run build:frontend && npm run build && electron-builder"
+  },
+  "build": {
+    "appId": "com.mhc.desktop",
+    "productName": "mhc-desktop",
+    "icon": "build-resources/icon.png",
+    "files": [
+      "main.js",
+      "main.js.map",
+      "preload.js",
+      "preload.js.map",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../mhc-desktop-frontend/dist",
+        "to": "spa/dist",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../mhc-desktop-app/content-packs",
+        "to": "content-packs",
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**",
+          "!**/*.pyc"
+        ]
+      },
+      {
+        "from": "build-resources/backend",
+        "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": "x64"
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "mhc-desktop"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "typescript": "~5.7.3"
+  }
+}

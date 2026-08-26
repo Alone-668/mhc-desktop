@@ -1,0 +1,29 @@
+[project]
+name = "mhc-desktop-backend"
+version = "0.1.0"
+description = "mhc-desktop backend — Skill runtime, MCP client, Market client (HTTP/SSE API for the Electron client)."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "minimal-harness>=0.8.1a6,<0.9",
+    "openai",
+    "anthropic",
+]
+
+[build-system]
+requires = ["uv_build>=0.10.12,<0.12"]
+build-backend = "uv_build"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# Bundle the built SPA so the packaged Electron app can serve it from
+# the same origin as /api/v1/... without a separate static file host.
+mhc_desktop_backend = ["static/**/*"]
+
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true

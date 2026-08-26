@@ -1,0 +1,27 @@
+{
+  "name": "mhc-desktop-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "type-check": "vue-tsc -b",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@incremark/core": "^0.3.10",
+    "@incremark/theme": "^0.3.10",
+    "@incremark/vue": "^0.3.10",
+    "gsap": "^3.15.0",
+    "pinia": "^3.0.4",
+    "vue": "^3.5.13",
+    "vue-router": "^4.6.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.3",
+    "typescript": "~5.7.3",
+    "vite": "^6.4.3",
+    "vue-tsc": "^2.2.8"
+  }
+}

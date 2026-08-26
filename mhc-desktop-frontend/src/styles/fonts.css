@@ -1,0 +1,80 @@
+/* ── HarmonyOS Sans ─────────────────────────────────────────────
+   Bundled as static assets under /fonts/ so the same file is
+   served by vite (dev) and bundled into the Electron build
+   (prod) without any extra copy step.
+
+   We ship two families:
+     * HarmonyOS Sans  — Latin / numbers / punctuation
+     * HarmonyOS Sans SC — Simplified Chinese glyphs
+   Both are loaded with the same weight axis; the browser
+   picks the family that has the requested glyph.
+
+   The browser does NOT preload 7-8MB CJK files; ``font-display:
+   swap`` keeps the text visible while the font downloads. For
+   the Latin files (~140 KB each) swap is fine too — the first
+   paint is identical to a system font.
+
+   Add new weights by dropping the TTF into public/fonts and
+   appending a matching @font-face block — no JS changes. */
+
+@font-face {
+  font-family: "HarmonyOS Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/HarmonyOS_Sans-Regular.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "HarmonyOS Sans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/HarmonyOS_Sans-Medium.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "HarmonyOS Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/HarmonyOS_Sans-Bold.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "HarmonyOS Sans SC";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/HarmonyOS_Sans_SC-Regular.ttf") format("truetype");
+  unicode-range:
+    U+4E00-9FFF, /* CJK Unified Ideographs */
+    U+3400-4DBF, /* CJK Ext A */
+    U+20000-2A6DF, /* CJK Ext B */
+    U+2A700-2B73F, /* CJK Ext C */
+    U+2B740-2B81F, /* CJK Ext D */
+    U+3000-303F, /* CJK symbols / full-width */
+    U+FF00-FFEF; /* Half-width / full-width forms */
+}
+
+@font-face {
+  font-family: "HarmonyOS Sans SC";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/HarmonyOS_Sans_SC-Medium.ttf") format("truetype");
+  unicode-range:
+    U+4E00-9FFF, U+3400-4DBF, U+20000-2A6DF, U+2A700-2B73F,
+    U+2B740-2B81F, U+3000-303F, U+FF00-FFEF;
+}
+
+@font-face {
+  font-family: "HarmonyOS Sans SC";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/HarmonyOS_Sans_SC-Bold.ttf") format("truetype");
+  unicode-range:
+    U+4E00-9FFF, U+3400-4DBF, U+20000-2A6DF, U+2A700-2B73F,
+    U+2B740-2B81F, U+3000-303F, U+FF00-FFEF;
+}

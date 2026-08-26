@@ -1,0 +1,19 @@
+[project]
+name = "mhc-desktop-deploy"
+version = "0.1.0"
+description = "mhc-desktop deployment shell — wires concrete stores + auth adapters on top of the mhc-desktop-backend kernel."
+requires-python = ">=3.12"
+dependencies = [
+    "mhc-desktop-backend>=0.1,<0.2",
+]
+
+[build-system]
+requires = ["uv_build>=0.10.12,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "mhc_desktop_deploy"
+
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true

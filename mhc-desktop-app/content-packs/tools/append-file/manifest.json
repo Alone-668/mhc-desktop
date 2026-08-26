@@ -1,0 +1,20 @@
+{
+  "name": "append-file",
+  "description": "Append content to the end of an existing file. The file must already exist — create it with write-file first (appending to a missing path is an error so a typo'd path surfaces instead of silently creating an empty file). Use this instead of shell '>>' redirection.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "Path to the file to append to (absolute or relative). Must exist."
+      },
+      "content": {
+        "type": "string",
+        "description": "Content to append to the end of the file."
+      }
+    },
+    "required": ["path", "content"]
+  },
+  "version": "0.1.0",
+  "license": "MIT"
+}

@@ -1,0 +1,24 @@
+{
+  "name": "edit-file",
+  "description": "Replace exact text in an existing file (find-and-replace) in one call. Returns a unified diff so you can verify the change without re-reading. If old_string is not found, the error includes a content preview — read the file first and copy the exact text (whitespace and line endings must match). Use this instead of sed/perl one-liners for targeted edits.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "Path to the file to edit (absolute or relative). Must exist."
+      },
+      "old_string": {
+        "type": "string",
+        "description": "The exact text to replace. Must match the file byte-for-byte, including whitespace and line endings. Read the file first to get it right."
+      },
+      "new_string": {
+        "type": "string",
+        "description": "The replacement text. Empty string deletes the matched text."
+      }
+    },
+    "required": ["path", "old_string", "new_string"]
+  },
+  "version": "0.1.0",
+  "license": "MIT"
+}

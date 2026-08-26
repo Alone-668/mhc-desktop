@@ -1,0 +1,169 @@
+/* ── Theme tokens ────────────────────────────────────────────────
+   Light is the default on :root. Dark is overridden when the
+   app sets `data-theme="dark"` on <html>. Components reference
+   these vars instead of raw color literals. */
+
+:root {
+  /* typography — HarmonyOS Sans family is loaded by fonts.css.
+     Fall back to platform defaults so the app still renders if
+     the bundled font ever fails to load. */
+  --font-sans:
+    "HarmonyOS Sans SC", "HarmonyOS Sans",
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue",
+    Arial, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* surfaces */
+  --bg: #ffffff;
+  --bg-subtle: #f9fafb;
+  --bg-panel: #fafafa;
+  --bg-hover: #f3f4f6;
+
+  /* text */
+  --text: #111827;
+  --text-mid: #6b7280;
+  --text-faint: #9ca3af;
+  --text-mute: #374151;
+
+  /* borders */
+  --border: #e5e7eb;
+  --border-mid: #d1d5db;
+  --border-faint: #f3f4f6;
+
+  /* accent (used for buttons + active nav) */
+  --accent: #111827;
+  --accent-fg: #ffffff;
+  --accent-hover: #1f2937;
+
+  /* brand-blue (used for primary action in providers / brand dot) */
+  --brand: #2563eb;
+  --brand-hover: #1d4ed8;
+  --brand-soft: #93c5fd;
+  --brand-from: #2563eb;
+  --brand-to: #7c3aed;
+
+  /* danger */
+  --danger: #b91c1c;
+  --danger-bg: #fee2e2;
+  --danger-border: #fca5a5;
+
+  /* depth */
+  --shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  --shadow-hover: 0 12px 32px rgba(15, 23, 42, 0.10);
+  --shadow-strong: 0 18px 40px rgba(0, 0, 0, 0.18);
+  --shadow-toggle: 0 1px 2px rgba(0, 0, 0, 0.15);
+  --backdrop: rgba(15, 23, 42, 0.35);
+
+  /* gradient used at the bottom of the chat for fade-out */
+  --fade: linear-gradient(to top, var(--bg), rgba(255, 255, 255, 0.6));
+
+  /* Incremark (@incremark/vue) ships its own CSS variables for the
+     rendered markdown — surfaces, text, fonts, code chrome. Without
+     these overrides the rendered ``.incremark-paragraph`` and
+     ``.tl-thinking-body`` inherit Incremark's stock colour palette
+     which doesn't match this app. We redirect the variables the
+     components actually read to our own tokens. */
+  --incremark-color-background-base: var(--bg);
+  --incremark-color-background-elevated: var(--bg-subtle);
+  --incremark-color-text-primary: var(--text);
+  --incremark-color-text-secondary: var(--text-mid);
+  --incremark-color-text-tertiary: var(--text-faint);
+  --incremark-color-border-default: var(--border);
+  --incremark-color-border-subtle: var(--border-faint);
+  --incremark-color-border-strong: var(--border-mid);
+  --incremark-color-code-inline-background: var(--bg-subtle);
+  --incremark-color-code-inline-text: var(--text);
+  /* Code-block surface follows the app theme: white-ish in light
+     mode (so github-light Shiki tokens land on a light surface),
+     dark slate in dark mode (so github-dark tokens land on dark).
+     CodeBlock.vue picks the matching Shiki theme at runtime. */
+  --incremark-color-code-block-background: var(--code-block-bg);
+  --incremark-color-code-block-text: var(--text);
+  --incremark-color-code-header-background: var(--bg-subtle);
+  --incremark-color-interactive-link: var(--brand);
+  --incremark-color-interactive-link-hover: var(--brand-hover);
+
+  /* Light theme: code block reads as a near-white surface tinted
+     with a hair of gray so it doesn't blend into the page bg.
+     Border picks up the standard muted border. */
+  --code-block-bg: #f6f8fa;
+  --code-block-fg: #24292f;
+  --code-block-border: var(--border-mid);
+  --code-block-muted: var(--text-mid);
+  --incremark-typography-font-family-base: var(--font-sans);
+  --incremark-typography-font-family-mono: var(--font-mono);
+  --incremark-typography-line-height-normal: 1.6;
+
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --bg: #0b0f1a;
+  --bg-subtle: #0f172a;
+  --bg-panel: #0a0e17;
+  --bg-hover: #1f2937;
+
+  --text: #f3f4f6;
+  --text-mid: #cbd5e1;
+  --text-faint: #94a3b8;
+  --text-mute: #e5e7eb;
+
+  --border: #374151;
+  --border-mid: #4b5563;
+  --border-faint: #1f2937;
+
+  --accent: #f3f4f6;
+  --accent-fg: #0b0f1a;
+  --accent-hover: #e5e7eb;
+
+  --brand: #3b82f6;
+  --brand-hover: #60a5fa;
+  --brand-soft: #1e40af;
+  --brand-from: #3b82f6;
+  --brand-to: #a78bfa;
+
+  --danger: #f87171;
+  --danger-bg: rgba(248, 113, 113, 0.14);
+  --danger-border: rgba(248, 113, 113, 0.4);
+
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-hover: 0 12px 32px rgba(0, 0, 0, 0.6);
+  --shadow-strong: 0 18px 40px rgba(0, 0, 0, 0.6);
+  --shadow-toggle: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --backdrop: rgba(0, 0, 0, 0.6);
+
+  --fade: linear-gradient(to top, var(--bg), rgba(11, 15, 26, 0.6));
+
+  /* Incremark token overrides — dark mode mirrors the light ones but
+     with the dark-theme palette from our tokens. */
+  --incremark-color-background-base: var(--bg);
+  --incremark-color-background-elevated: var(--bg-subtle);
+  --incremark-color-text-primary: var(--text);
+  --incremark-color-text-secondary: var(--text-mid);
+  --incremark-color-text-tertiary: var(--text-faint);
+  --incremark-color-border-default: var(--border);
+  --incremark-color-border-subtle: var(--border-faint);
+  --incremark-color-border-strong: var(--border-mid);
+  --incremark-color-code-inline-background: var(--bg-subtle);
+  --incremark-color-code-inline-text: var(--text);
+  /* Dark theme: code block is a darker slate island so the page
+     bg → code block boundary is visible without screaming. */
+  --incremark-color-code-block-background: var(--code-block-bg);
+  --incremark-color-code-block-text: var(--text);
+  --incremark-color-code-header-background: var(--bg-subtle);
+  --incremark-color-interactive-link: var(--brand);
+  --incremark-color-interactive-link-hover: var(--brand-hover);
+  --incremark-typography-font-family-base: var(--font-sans);
+  --incremark-typography-font-family-mono: var(--font-mono);
+  --incremark-typography-line-height-normal: 1.6;
+
+  --code-block-bg: #0d1117;
+  --code-block-fg: #c9d1d9;
+  --code-block-border: #30363d;
+  --code-block-muted: #8b949e;
+
+  color-scheme: dark;
+}

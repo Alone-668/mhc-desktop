@@ -1,0 +1,20 @@
+{
+  "name": "write-file",
+  "description": "Create a new file or overwrite an existing file with the given content. Parent directories are created automatically. Use this instead of shell redirection (echo > file) for writing files — content is passed verbatim with no quoting or encoding surprises.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "Path to the file to create or overwrite (absolute or relative). Parent directories are created automatically."
+      },
+      "content": {
+        "type": "string",
+        "description": "Full content to write to the file. May be empty to create a blank file."
+      }
+    },
+    "required": ["path", "content"]
+  },
+  "version": "0.1.0",
+  "license": "MIT"
+}

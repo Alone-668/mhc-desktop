@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>mhc-desktop</title>
+    <!-- Preload the Regular weight (the smallest file) so the first
+         paint already uses HarmonyOS Sans. Bold/Medium and the CJK
+         family load lazily via @font-face and swap in. -->
+    <link rel="preload" href="/fonts/HarmonyOS_Sans-Regular.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="preload" href="/fonts/HarmonyOS_Sans_SC-Regular.ttf" as="font" type="font/ttf" crossorigin />
+    <script>
+      // Apply saved theme before any CSS paints to avoid a light-mode
+      // flash on dark-mode loads. Mirrors useThemeStore.init logic.
+      ;(function () {
+        try {
+          var v = localStorage.getItem("mhc.theme")
+          if (v === "dark" || v === "light") {
+            document.documentElement.setAttribute("data-theme", v)
+          }
+        } catch (e) {
+          /* ignore */
+        }
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

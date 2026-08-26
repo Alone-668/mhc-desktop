@@ -1,0 +1,21 @@
+{
+  "name": "cmd",
+  "description": "Execute a Windows cmd.exe command line and stream its stdout. Hard cap 10 minutes per call; default 60s. Use this for classic cmd-style work: dir listings, copy/move, ping, ipconfig, path/registry checks, running .bat/.cmd scripts, etc. The command is written to a temp .bat file and run via `cmd.exe /d /c <bat>` so cmd's quoting rules don't apply — embedded quotes, &, |, ^, % are interpreted exactly as written. Cancellation / timeout both kill the running cmd process — there is no orphan child after the call returns.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "command": {
+        "type": "string",
+        "description": "The exact command line to run in cmd.exe. Written verbatim to a temp .bat and executed with `cmd.exe /d /c <bat>` (prefixed with `@echo off`). Use classic cmd syntax: `dir /b`, `ping -n 2 127.0.0.1`, `echo %PATH%`, `type file.txt`. Cannot be empty."
+      },
+      "timeout": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 600,
+        "default": 60,
+        "description": "Maximum wall-clock seconds to wait for the command to finish. Required. Default 60, hard cap 600. The cmd process is killed if this elapses before the command returns."
+      }
+    },
+    "required": ["command", "timeout"]
+  }
+}
