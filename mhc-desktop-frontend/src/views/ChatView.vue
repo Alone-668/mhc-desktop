@@ -6,7 +6,7 @@ import { useSessionStreamsStore } from "../stores/sessionStreams"
 import { useSkillsStore } from "../stores/skills"
 import { useMCPsStore } from "../stores/mcps"
 import { useToolsStore } from "../stores/tools"
-import { api, type ChatMessage } from "../api/client"
+import { api, type ChatMessage, type LLMToolCall } from "../api/client"
 import Icon from "../components/Icon.vue"
 import MarkdownView from "../components/MarkdownView.vue"
 import ToolCallCapsule from "../components/ToolCallCapsule.vue"
@@ -471,6 +471,100 @@ function composeMessagesForPersist(): ChatMessage[] {
     }))
 }
 
+/** Convert frontend-shaped messages into the LLM-shaped array that
+ *  ``/api/v1/chat`` expects. Two key differences from
+ *  ``composeMessagesForPersist``:
+ *
+ *  1. Assistant messages keep their ``tool_calls`` field — the LLM
+ *     needs to see what tools the model itself invoked in the
+ *     previous turn. Without this, a cancelled / errored mid-tool
+ *     turn arrives at the LLM as plain text, and the model on the
+ *     next turn loses the thread ("I called X with Y" with no
+ *     trace of X) — depending on the model that surfaces as
+ *     hallucinated results, refusal to call tools, or worse.
+ *  2. Each ``{ kind: "tool", call }`` segment becomes its own
+ *     ``role: "tool"`` message carrying the tool result / error /
+ *     cancellation marker, since that's the wire shape every LLM
+ *     provider needs to close the loop on a tool call.
+ *
+ *  User-message metadata (skills / mcp / tools / files) is the
+ *  per-turn attachment; the backend needs it to know which skills
+ *  to re-inject and which tool/MCP schemas to expose, so it stays
+ *  on the user message. The cancelled flag is purely UI metadata
+ *  and intentionally omitted — the LLM can read "tool result
+ *  cancelled" from the role=tool message itself. */
+function buildLLMMessages(
+  messages: LocalMessage[],
+): ChatMessage[] {
+  const out: ChatMessage[] = []
+  for (const m of messages) {
+    if (m.pending) continue
+    if (m.role === "user") {
+      const u: ChatMessage = {
+        role: "user",
+        content: m.content || "",
+      }
+      if (m.skills && m.skills.length > 0) u.skills = m.skills
+      if (m.mcp && m.mcp.length > 0) u.mcp = m.mcp
+      if (m.tools && m.tools.length > 0) u.tools = m.tools
+      if (m.files && m.files.length > 0) u.files = m.files
+      out.push(u)
+    } else if (m.role === "assistant") {
+      const llmToolCalls: LLMToolCall[] | undefined = m.tool_calls && m.tool_calls.length > 0
+        ? m.tool_calls.map((t) => ({
+            id: t.call_id,
+            type: "function",
+            function: {
+              name: t.name,
+              arguments: _safeStringifyArgs(t.args),
+            },
+          }))
+        : undefined
+      out.push({
+        role: "assistant",
+        content: m.content || "",
+        llm_tool_calls: llmToolCalls,
+      })
+      // Walk the segment timeline and emit one role=tool message
+      // per tool segment so the LLM sees the result / error /
+      // cancellation of every call. Order matters — segments are
+      // already in delivery order, so this preserves the original
+      // interleaving of thinking / text / tool calls.
+      if (m.segments) {
+        for (const seg of m.segments) {
+          if (seg.kind !== "tool") continue
+          const c = seg.call
+          // A cancelled tool still has a slot in the conversation:
+          // emit an empty result so the LLM knows the call
+          // happened and was aborted, instead of seeing an
+          // un-answered assistant.tool_call (most providers will
+          // either reject that or treat the next turn as a fresh
+          // request, neither of which is what we want).
+          out.push({
+            role: "tool",
+            tool_call_id: c.call_id,
+            content: c.result ?? c.error ?? "",
+          })
+        }
+      }
+    }
+  }
+  return out
+}
+
+/** Tool args can carry non-JSON-serialisable values (Decimal,
+ *  datetime, …) depending on what the LLM emitted and how the
+ *  frontend parsed it. Stringify defensively so a single bad arg
+ *  doesn't take down the whole request — fall back to an empty
+ *  object, which is still a valid OpenAI tool_call. */
+function _safeStringifyArgs(args: Record<string, unknown>): string {
+  try {
+    return JSON.stringify(args)
+  } catch {
+    return "{}"
+  }
+}
+
 async function send() {
   const text = input.value.trim()
   const files = attachedFiles.value
@@ -527,20 +621,11 @@ async function send() {
     skills: attachedSkills,
     mcp: attachedMCPs,
     tools: attachedTools,
-    messages: messages.value
-      .filter((m) => !m.pending)
-      .map((m) => ({
-        role: m.role,
-        content: m.content,
-        skills: m.role === "user" ? m.skills : undefined,
-        mcp: m.role === "user" ? m.mcp : undefined,
-        tools: m.role === "user" ? m.tools : undefined,
-        // Files: metadata-only; the backend splices the absolute
-        // paths into the user content just before the LLM call
-        // (and reuses that augmented content across the
-        // controller's loop iterations).
-        files: m.role === "user" ? m.files : undefined,
-      })),
+    // LLM-shaped: assistant messages keep their tool_calls and the
+    // segment timeline is expanded into role=tool result messages.
+    // Without this, a turn that got cancelled mid-tool arrives at
+    // the model as plain text and the next call loses context.
+    messages: buildLLMMessages(messages.value),
   }
 
   // Fire and forget — the bus owns the stream from here. The base

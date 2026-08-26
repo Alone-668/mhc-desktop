@@ -138,8 +138,12 @@ export interface Provider {
 }
 
 export interface ChatMessage {
-  role: "system" | "user" | "assistant"
+  role: "system" | "user" | "assistant" | "tool"
   content: string
+  /** Wire-format tool-call id (for ``role: "tool"`` messages the
+   *  frontend reconstructs from the segment timeline). The LLM
+   *  matches it back to the assistant's ``llm_tool_calls[i].id``. */
+  tool_call_id?: string
   /** Skill slugs the user attached to this turn. Persisted on user
    * messages so the UI can show which skills were in scope when the
    * reply was generated. The backend reads this back on each LLM
@@ -149,6 +153,10 @@ export interface ChatMessage {
   /** MCP slugs the user attached to this turn. Mirrors ``skills``
    * — same per-turn scope, same persistence, same UI badge. */
   mcp?: string[]
+  /** Tool slugs the user attached to this turn. Same per-turn
+   *  scope as ``skills`` / ``mcp``; the backend reads this to know
+   *  which tool schemas to expose to the LLM for THIS message. */
+  tools?: string[]
   /** Files the user attached to this turn. Persisted as metadata
    * only — the binary stays on disk; the model receives only the
    * absolute paths, spliced into the user message content by the
@@ -165,6 +173,14 @@ export interface ChatMessage {
    *  capsule row. Backend ignores this field for LLM-routing; it
    *  is purely a display-persistence concern. */
   tool_calls?: ToolCallPersistence[]
+  /** Wire-format tool calls in OpenAI's
+   *  ``{id, type, function:{name, arguments}}`` shape — set only
+   *  on outgoing chat requests so the LLM sees the previous turn's
+   *  tool calls in the shape it understands. Reconstructed at
+   *  send time from ``tool_calls`` + the segment timeline so a
+   *  turn that was cancelled mid-tool still carries full context
+   *  into the next LLM call. See ``ChatView.buildLLMMessages``. */
+  llm_tool_calls?: LLMToolCall[]
   /** Ordered assistant-message timeline; see ``MessageSegmentPersistence``. */
   segments?: MessageSegmentPersistence[]
   /** ``true`` when an assistant message was cancelled mid-stream
@@ -207,6 +223,20 @@ export interface ToolCallPersistence {
   /** Final duration in ms for completed calls. Shown as
    *  "ran in 3.2s" once the call ends. */
   durationMs?: number
+}
+
+/** Wire shape for a tool call emitted on an assistant message in
+ *  the chat request payload. Mirrors OpenAI's format (``arguments``
+ *  is a JSON-encoded string) so the LLM provider gets the structure
+ *  it already understands — the frontend just translates from its
+ *  internal ``ToolCallPersistence`` at send time. */
+export interface LLMToolCall {
+  id: string
+  type: "function"
+  function: {
+    name: string
+    arguments: string
+  }
 }
 
 /** Persisted form of ``MessageSegment``: the ordered timeline of an

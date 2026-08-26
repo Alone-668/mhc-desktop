@@ -530,3 +530,151 @@ async def test_chat_cap_never_drops_emitted_tool_calls(tmp_path: Path):
     assert all(
         e["data"].get("ok") is not False for e in events if e["event"] == "tool_end"
     )
+
+
+class _RecordingPlainTextProvider:
+    """A provider that records every ``chat()`` invocation so the
+    test can assert what the model actually saw in conversation,
+    then returns plain text. Used to prove the wire format carries
+    a previous turn's tool_calls / tool results even when that
+    turn was cancelled mid-tool — without this, the LLM sees an
+    assistant message with no record of having invoked the tool
+    and downstream turns get into a confused state where the model
+    either hallucinates results or refuses to call tools. """
+
+    name = "stub"
+    provider_type = "openai"
+
+    def __init__(self) -> None:
+        self.messages_seen: list[list[dict[str, Any]]] = []
+        self.tools_seen: list[list[Any]] = []
+
+    async def chat(self, messages, tools=None):
+        # Drop the system prompt (injected server-side, irrelevant
+        # to this assertion) so we only inspect the user's own
+        # conversation shape.
+        user_messages = [m for m in messages if m.get("role") != "system"]
+        self.messages_seen.append(user_messages)
+        self.tools_seen.append(list(tools or []))
+        return _FakeTextStream("ok")
+
+
+@pytest.mark.asyncio
+async def test_chat_preserves_cancelled_tool_context(tmp_path: Path):
+    """Regression for the customer-reported bug: a previous turn
+    that was cancelled mid-tool left the assistant message in
+    history as plain text, with no record of the tool_call or its
+    cancelled result. The next LLM call then had no context for
+    what the model had been doing and surfaced as "model
+    hallucinating actions without actually invoking tools".
+
+    The wire payload the frontend sends must keep the assistant
+    message's ``tool_calls`` field AND a sibling ``role: "tool"``
+    message carrying the cancelled marker. The backend must pass
+    both through to the LLM unchanged. Without this test, dropping
+    either on the round-trip would silently break the contract. """
+    provider = _RecordingPlainTextProvider()
+    app = _build_app(tmp_path, provider=provider)
+    try:
+        store = app.state.tool_store
+        await import_local_tool(
+            "cmd",
+            "async def tool_run(command: str = 'echo ok'):\n    return f'ran: {command}'\n",
+        )
+        await store.create(
+            {
+                "slug": "cmd",
+                "name": "Cmd",
+                "kind": "local",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"command": {"type": "string"}},
+                },
+            }
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            r = await client.post(
+                "/api/v1/chat",
+                json={
+                    "provider": "stub",
+                    "session_id": "sess-cancel",
+                    "assistant_message_id": "msg-cancel",
+                    # Mirror the frontend's buildLLMMessages output:
+                    # user with attached tools, then an assistant turn
+                    # whose tool_call got cancelled mid-execution, then
+                    # the user's next message.
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": "list /tmp",
+                            "tools": ["cmd"],
+                        },
+                        {
+                            "role": "assistant",
+                            "content": "",
+                            "llm_tool_calls": [
+                                {
+                                    "id": "call_abc",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "cmd",
+                                        "arguments": '{"command":"ls /tmp"}',
+                                    },
+                                }
+                            ],
+                        },
+                        {
+                            "role": "tool",
+                            "tool_call_id": "call_abc",
+                            "content": "cancelled",
+                        },
+                        {
+                            "role": "user",
+                            "content": "try again",
+                            "tools": ["cmd"],
+                        },
+                    ],
+                    "tools": ["cmd"],
+                },
+            )
+    finally:
+        _restore_chat(app)
+    assert r.status_code == 200, r.text
+
+    # The provider was invoked exactly once for this request.
+    assert len(provider.messages_seen) == 1
+    sent = provider.messages_seen[0]
+    # No system prompt in the recording (we filtered it), so the
+    # four user-supplied messages should land in order.
+    assert [m.get("role") for m in sent] == [
+        "user",
+        "assistant",
+        "tool",
+        "user",
+    ]
+    # The assistant message must still carry its tool_calls so the
+    # model can match it against the tool result below it.
+    asst = sent[1]
+    assert asst["role"] == "assistant"
+    assert asst.get("llm_tool_calls") == [
+        {
+            "id": "call_abc",
+            "type": "function",
+            "function": {
+                "name": "cmd",
+                "arguments": '{"command":"ls /tmp"}',
+            },
+        }
+    ]
+    # The role=tool result must survive the coerce round-trip
+    # (this was the second half of the bug — tool_call_id got
+    # dropped because the key wasn't in the attach-metadata list).
+    tool_msg = sent[2]
+    assert tool_msg["role"] == "tool"
+    assert tool_msg.get("tool_call_id") == "call_abc"
+    assert tool_msg.get("content") == "cancelled"
+    # Current-turn tools are still being passed to the LLM.
+    assert provider.tools_seen[0] != []
+

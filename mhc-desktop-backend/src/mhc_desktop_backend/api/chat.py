@@ -241,9 +241,22 @@ def _attach_user_metadata(coerced: list[Message], raw: list[dict[str, Any]]) -> 
     """Carry per-message metadata from the wire payload into the
     coerced messages list. ``_coerce_messages`` keeps only
     role+content (matching the LLM contract); we want to remember
-    the user's skills/mcp/tools attachment for persistence."""
+    the user's skills/mcp/tools attachment for persistence, and —
+    crucially — the tool_calls on assistant messages plus the
+    ``tool_call_id`` on role=tool messages so a previous turn that
+    was cancelled mid-tool still carries its full context into
+    the next LLM call."""
     for c, original in zip(coerced, raw):
-        for key in ("skills", "mcp", "tools", "files", "tool_calls", "segments"):
+        for key in (
+            "skills",
+            "mcp",
+            "tools",
+            "files",
+            "tool_calls",
+            "segments",
+            "tool_call_id",
+            "llm_tool_calls",
+        ):
             if key in original and key not in c:
                 c[key] = original[key]  # type: ignore[literal-required]
 
