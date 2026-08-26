@@ -542,11 +542,12 @@ async function submit() {
   opacity: 1;
 }
 
-/* Respect users who've asked the OS for less motion. */
+/* Respect users who've asked the OS for less motion — but only for
+ * interactive controls. The login wave backdrop is decorative and the
+ * product owner wants it to animate regardless (visual polish > a11y
+ * here). If a11y regressions come back, add a Settings toggle instead
+ * of a blanket override. */
 @media (prefers-reduced-motion: reduce) {
-  .ribbon {
-    animation: none;
-  }
   .theme-toggle,
   .submit {
     transition: none;
