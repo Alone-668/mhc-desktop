@@ -90,49 +90,53 @@ const VALID = {
     strict_1.default.ok(out.backend);
 });
 (0, node_test_1.default)("fetchManifestWithMirrors: returns first successful source", async () => {
-    const fakeOk = async () => ({
-        ok: true,
-        status: 200,
-        text: async () => JSON.stringify(VALID),
-        arrayBuffer: async () => new ArrayBuffer(0),
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async (url) => {
+        if (String(url).includes("primary")) {
+            return { ok: true, status: 200, text: async () => JSON.stringify(VALID) };
+        }
+        return { ok: false, status: 503, text: async () => "" };
     });
-    const fakeFail = async () => ({
-        ok: false,
-        status: 503,
-        text: async () => "",
-        arrayBuffer: async () => new ArrayBuffer(0),
-    });
-    const { manifest, source } = await (0, manifest_1.fetchManifestWithMirrors)("https://primary.example.com/update.json", ["https://mirror-a.example.com", "https://mirror-b.example.com"], {
-        fetcher: async (url) => {
-            if (url.includes("primary"))
-                return fakeOk();
-            return fakeFail();
-        },
-    });
-    strict_1.default.equal(manifest.tier2?.spa?.version, "0.2.1");
-    strict_1.default.equal(source, "https://primary.example.com/update.json");
+    try {
+        const { manifest, source } = await (0, manifest_1.fetchManifestWithMirrors)("https://primary.example.com/update.json", ["https://mirror-a.example.com", "https://mirror-b.example.com"]);
+        strict_1.default.equal(manifest.tier2?.spa?.version, "0.2.1");
+        strict_1.default.equal(source, "https://primary.example.com/update.json");
+    }
+    finally {
+        globalThis.fetch = origFetch;
+    }
 });
 (0, node_test_1.default)("fetchManifestWithMirrors: falls back to first mirror when primary fails", async () => {
     const calls = [];
-    const { manifest, source } = await (0, manifest_1.fetchManifestWithMirrors)("https://primary.example.com/update.json", ["https://mirror-a.example.com", "https://mirror-b.example.com"], {
-        fetcher: async (url) => {
-            calls.push(url);
-            if (url.includes("primary")) {
-                return { ok: false, status: 404, text: async () => "", arrayBuffer: async () => new ArrayBuffer(0) };
-            }
-            if (url.includes("mirror-a")) {
-                return { ok: false, status: 500, text: async () => "", arrayBuffer: async () => new ArrayBuffer(0) };
-            }
-            return { ok: true, status: 200, text: async () => JSON.stringify(VALID), arrayBuffer: async () => new ArrayBuffer(0) };
-        },
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async (url) => {
+        calls.push(String(url));
+        if (String(url).includes("primary")) {
+            return { ok: false, status: 404, text: async () => "" };
+        }
+        if (String(url).includes("mirror-a")) {
+            return { ok: false, status: 500, text: async () => "" };
+        }
+        return { ok: true, status: 200, text: async () => JSON.stringify(VALID) };
     });
-    strict_1.default.equal(manifest.min_app_version, "0.1.0");
-    strict_1.default.ok(source.includes("mirror-b"));
-    strict_1.default.equal(calls.length, 3);
+    try {
+        const { manifest, source } = await (0, manifest_1.fetchManifestWithMirrors)("https://primary.example.com/update.json", ["https://mirror-a.example.com", "https://mirror-b.example.com"]);
+        strict_1.default.equal(manifest.min_app_version, "0.1.0");
+        strict_1.default.ok(source.includes("mirror-b"));
+        strict_1.default.equal(calls.length, 3);
+    }
+    finally {
+        globalThis.fetch = origFetch;
+    }
 });
 (0, node_test_1.default)("fetchManifestWithMirrors: throws when all fail", async () => {
-    await strict_1.default.rejects((0, manifest_1.fetchManifestWithMirrors)("https://primary.example.com/update.json", [], {
-        fetcher: async () => ({ ok: false, status: 500, text: async () => "", arrayBuffer: async () => new ArrayBuffer(0) }),
-    }), /all manifest sources failed/);
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async () => ({ ok: false, status: 500, text: async () => "" }));
+    try {
+        await strict_1.default.rejects((0, manifest_1.fetchManifestWithMirrors)("https://primary.example.com/update.json", []), /all manifest sources failed/);
+    }
+    finally {
+        globalThis.fetch = origFetch;
+    }
 });
 //# sourceMappingURL=manifest.test.js.map

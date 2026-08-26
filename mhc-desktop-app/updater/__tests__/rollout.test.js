@@ -96,13 +96,11 @@ async function makeTarball(outFile, content) {
         return origFetch(url);
     });
     try {
-        const log = (0, log_1.createMemoryLogger)();
+        const log = (0, log_1.memoryLogger)();
         const states = [];
         const handle = (0, rollout_1.createRollout)(ctx, {
             logger: log,
             onState: (i) => states.push(i.state),
-            // Avoid the auto-loop firing in tests.
-            setIntervalFn: (() => 0),
         });
         const r = await handle.checkNow();
         strict_1.default.equal(r.state, "update_available");
@@ -122,7 +120,7 @@ async function makeTarball(outFile, content) {
     const origFetch = globalThis.fetch;
     globalThis.fetch = (async () => ({ ok: false, status: 500, text: async () => "", arrayBuffer: async () => new ArrayBuffer(0), headers: new Map() }));
     try {
-        const handle = (0, rollout_1.createRollout)(ctx, { setIntervalFn: (() => 0) });
+        const handle = (0, rollout_1.createRollout)(ctx, { logger: (0, log_1.memoryLogger)() });
         const r = await handle.checkNow();
         strict_1.default.equal(r.state, "download_failed");
         strict_1.default.ok(r.error);
@@ -144,7 +142,7 @@ async function makeTarball(outFile, content) {
     const origFetch = globalThis.fetch;
     globalThis.fetch = (async () => ({ ok: true, status: 200, text: async () => JSON.stringify(VALID), arrayBuffer: async () => new ArrayBuffer(0), headers: new Map() }));
     try {
-        const handle = (0, rollout_1.createRollout)(ctx, { setIntervalFn: (() => 0) });
+        const handle = (0, rollout_1.createRollout)(ctx, { logger: (0, log_1.memoryLogger)() });
         const r = await handle.checkNow();
         strict_1.default.equal(r.state, "idle");
         strict_1.default.equal(r.available, undefined);
@@ -159,7 +157,7 @@ async function makeTarball(outFile, content) {
     const origFetch = globalThis.fetch;
     globalThis.fetch = (async () => ({ ok: true, status: 200, text: async () => JSON.stringify(VALID), arrayBuffer: async () => new ArrayBuffer(0), headers: new Map() }));
     try {
-        const handle = (0, rollout_1.createRollout)(ctx, { setIntervalFn: (() => 0) });
+        const handle = (0, rollout_1.createRollout)(ctx, { logger: (0, log_1.memoryLogger)() });
         const r = await handle.checkNow();
         strict_1.default.equal(r.state, "update_available");
         strict_1.default.equal(r.forceTier1, true);
@@ -173,7 +171,7 @@ async function makeTarball(outFile, content) {
     const ctx = await makeCtx();
     ctx.prefs.autoUpdate = false;
     try {
-        const handle = (0, rollout_1.createRollout)(ctx, { setIntervalFn: (() => 0) });
+        const handle = (0, rollout_1.createRollout)(ctx, { logger: (0, log_1.memoryLogger)() });
         const r = await handle.checkNow();
         strict_1.default.equal(r.state, "idle");
     }
@@ -219,8 +217,8 @@ async function makeTarball(outFile, content) {
         return { ok: false, status: 404, text: async () => "", arrayBuffer: async () => new ArrayBuffer(0), headers: new Map() };
     });
     try {
-        const log = (0, log_1.createMemoryLogger)();
-        const handle = (0, rollout_1.createRollout)(ctx, { logger: log, setIntervalFn: (() => 0) });
+        const log = (0, log_1.memoryLogger)();
+        const handle = (0, rollout_1.createRollout)(ctx, { logger: log });
         await handle.checkNow();
         const r = await handle.installAvailable();
         strict_1.default.equal(r.state, "staged");
@@ -258,7 +256,7 @@ async function makeTarball(outFile, content) {
         return { ok: false, status: 404, text: async () => "", arrayBuffer: async () => new ArrayBuffer(0), headers: new Map() };
     });
     try {
-        const handle = (0, rollout_1.createRollout)(ctx, { setIntervalFn: (() => 0) });
+        const handle = (0, rollout_1.createRollout)(ctx, { logger: (0, log_1.memoryLogger)() });
         await handle.checkNow();
         await strict_1.default.rejects(handle.installAvailable(), /sha256 mismatch/);
     }
@@ -285,7 +283,7 @@ async function makeTarball(outFile, content) {
         tier3: undefined,
     };
     await node_fs_1.promises.writeFile((0, node_path_1.join)(stagedDir, "manifest.json"), JSON.stringify(m));
-    const handle = (0, rollout_1.createRollout)(ctx, { setIntervalFn: (() => 0) });
+    const handle = (0, rollout_1.createRollout)(ctx, { logger: (0, log_1.memoryLogger)() });
     const r = await handle.applyPending();
     strict_1.default.deepEqual(r.applied, ["spa"]);
     strict_1.default.equal(await node_fs_1.promises.readFile((0, node_path_1.join)(ctx.resourcesPath, "spa", "index.html"), "utf8"), "<html>v2</html>");
@@ -313,7 +311,7 @@ async function makeTarball(outFile, content) {
         tier3: undefined,
     };
     await node_fs_1.promises.writeFile((0, node_path_1.join)(stagedDir, "manifest.json"), JSON.stringify(m));
-    const handle = (0, rollout_1.createRollout)(ctx, { setIntervalFn: (() => 0) });
+    const handle = (0, rollout_1.createRollout)(ctx, { logger: (0, log_1.memoryLogger)() });
     await handle.applyPending();
     strict_1.default.equal(await node_fs_1.promises.readFile((0, node_path_1.join)(ctx.resourcesPath, "spa", "index.html"), "utf8"), "<html>v2</html>");
     const r = await handle.rollbackNow();
@@ -323,7 +321,7 @@ async function makeTarball(outFile, content) {
 });
 (0, node_test_1.default)("rollout: onStateChange emits transitions", async () => {
     const ctx = await makeCtx();
-    const handle = (0, rollout_1.createRollout)(ctx, { setIntervalFn: (() => 0) });
+    const handle = (0, rollout_1.createRollout)(ctx, { logger: (0, log_1.memoryLogger)() });
     const emitter = new node_events_1.EventEmitter();
     const seen = [];
     const off = handle.onStateChange((i) => {

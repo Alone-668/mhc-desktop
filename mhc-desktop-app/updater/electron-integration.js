@@ -2,18 +2,12 @@
 /**
  * Electron-side glue for the updater. Owns the bootstrap, the
  * background loop, and the IPC handlers the renderer talks to.
- *
- * Kept out of main.ts so the diff stays small and so unit tests can
- * ignore it. main.ts only imports ``wireUpdater`` once.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.wireUpdater = wireUpdater;
-exports.wireUpdaterEarly = wireUpdaterEarly;
-exports.getUpdater = getUpdater;
 const electron_1 = require("electron");
 const index_1 = require("./index");
-const DEFAULT_MANIFEST_URL = process.env.MHC_MANIFEST_URL
-    || "https://github.com/J0ey1iu/mhc-desktop/releases/latest/download/update.json";
+const DEFAULT_MANIFEST_URL = "https://github.com/J0ey1iu/mhc-desktop/releases/latest/download/update.json";
 // GH proxies tried in order if the primary URL fails. Sticky: once we
 // pick a working one, we cache it in last-good.json's manifest_source
 // so subsequent launches prefer it.
@@ -24,7 +18,6 @@ const MIRRORS = [
 ];
 let booted = null;
 let mainWindowRef = null;
-let backendReady = false;
 /** Wire everything. Call once from main.ts after app.whenReady().
  *
  *  ``isReadyForCommit`` is the backend's /ready promise — once it
@@ -37,12 +30,37 @@ async function wireUpdater(opts) {
         return;
     }
     mainWindowRef = opts.mainWindow;
-    const handle = booted?.handle;
-    if (!handle) {
-        console.error("[updater] wireUpdater called before wireUpdaterEarly");
+    try {
+        booted = await (0, index_1.bootstrapUpdater)({ defaultManifestUrl: DEFAULT_MANIFEST_URL, mirrors: MIRRORS });
+    }
+    catch (e) {
+        console.error(`[updater] bootstrap failed: ${e.message}`);
         return;
     }
-    // 2. Wire IPC so the renderer can ask for status / trigger checks.
+    const handle = booted.handle;
+    // Forward state transitions to renderer; mainWindowRef is null in
+    // early phase so calls are no-ops until the window exists.
+    handle.onStateChange((info) => {
+        sendToRenderer("update:state", (0, index_1.snapshotForRenderer)(handle));
+        if (info.state === "staged")
+            notifyStaged();
+        else if (info.state === "rolled_back")
+            notifyRolledBack(info.error);
+        else if (info.state === "update_available" && !info.forceTier1)
+            notifyAvailable(info);
+    });
+    // Apply staged payloads BEFORE the backend starts so the new SPA
+    // and content-packs are what the user sees on launch.
+    if ((0, index_1.hasStagedManifest)(electron_1.app.getPath("userData"))) {
+        console.log("[updater] staged update detected — applying before backend start");
+        try {
+            const r = await handle.applyPending();
+            console.log(`[updater] applied: ${r.applied.join(", ")}`);
+        }
+        catch (e) {
+            console.error(`[updater] apply failed at boot: ${e.message}`);
+        }
+    }
     electron_1.ipcMain.handle("update:get-status", () => (0, index_1.snapshotForRenderer)(handle));
     electron_1.ipcMain.handle("update:check-now", async () => {
         await handle.checkNow();
@@ -53,20 +71,19 @@ async function wireUpdater(opts) {
         return (0, index_1.snapshotForRenderer)(handle);
     });
     electron_1.ipcMain.handle("update:apply-now", async () => {
-        const r = await handle.applyPending();
-        return { applied: r.applied };
+        await handle.applyPending();
+        return (0, index_1.snapshotForRenderer)(handle);
     });
     electron_1.ipcMain.handle("update:rollback", async () => {
         const r = await handle.rollbackNow();
         return { rolled: r.rolled };
     });
-    // 3. Once the backend is ready and serving, mark the apply as
-    //    committed. If the backend fails to come up (a bad apply broke
-    //    server.py), call rollbackNow to restore.
+    // Once the backend is ready and serving, mark the apply as
+    // committed. If the backend fails to come up (a bad apply broke
+    // server.py), call rollbackNow to restore.
     opts
         .isReadyForCommit()
         .then(async () => {
-        backendReady = true;
         const i = handle.getInfo();
         if (i.state === "committed") {
             await handle.commitIfHealthy({
@@ -80,57 +97,11 @@ async function wireUpdater(opts) {
         }
     })
         .catch(async (err) => {
-        if (!backendReady) {
-            console.error(`[updater] backend failed to come up; rolling back: ${err}`);
-            const r = await handle.rollbackNow();
-            console.log(`[updater] rolled back: ${r.rolled.join(", ") || "(nothing)"}`);
-        }
+        console.error(`[updater] backend failed to come up; rolling back: ${err}`);
+        const r = await handle.rollbackNow();
+        console.log(`[updater] rolled back: ${r.rolled.join(", ") || "(nothing)"}`);
     });
-    // 4. Background loop. Initial check fires immediately; subsequent
-    //    every prefs.checkIntervalMs (default 6h).
     handle.startBackgroundLoop();
-}
-/** Bootstrap phase: initialize prefs/last-good and apply any staged
- *  payloads BEFORE the backend starts. Called early in main.ts's
- *  bootstrap(). */
-async function wireUpdaterEarly() {
-    try {
-        booted = await (0, index_1.bootstrapUpdater)({
-            defaultManifestUrl: DEFAULT_MANIFEST_URL,
-            mirrors: MIRRORS,
-        });
-    }
-    catch (e) {
-        console.error(`[updater] bootstrap failed: ${e.message}`);
-        return;
-    }
-    const handle = booted.handle;
-    // Forward state transitions to renderer (settings page listens).
-    // sendToRenderer() is a no-op if mainWindowRef is null (early phase).
-    handle.onStateChange((info) => {
-        sendToRenderer("update:state", (0, index_1.snapshotForRenderer)(handle));
-        if (info.state === "staged") {
-            notifyStaged();
-        }
-        else if (info.state === "rolled_back") {
-            notifyRolledBack(info.error);
-        }
-        else if (info.state === "update_available" && !info.forceTier1) {
-            notifyAvailable(info);
-        }
-    });
-    // Apply staged payloads BEFORE backend starts.
-    if ((0, index_1.hasStagedManifest)(electron_1.app.getPath("userData"))) {
-        console.log("[updater] staged update detected — applying before backend start");
-        try {
-            const r = await handle.applyPending();
-            console.log(`[updater] applied: ${r.applied.join(", ")}`);
-        }
-        catch (e) {
-            console.error(`[updater] apply failed at boot: ${e.message}`);
-            // applyPending already handles internal rollback; we just log.
-        }
-    }
 }
 // ---------- helpers ----------
 function sendToRenderer(channel, payload) {
@@ -158,10 +129,5 @@ function notifyRolledBack(error) {
         title: "mhc-desktop 更新已回滚",
         body: error ? `原因: ${error}` : "新版本启动失败，已恢复到上一可用版本。",
     }).show();
-}
-/** Expose access for tests or for the rare in-session backend reload
- *  (Tier 3). Not used in MVP. */
-function getUpdater() {
-    return booted?.handle ?? null;
 }
 //# sourceMappingURL=electron-integration.js.map

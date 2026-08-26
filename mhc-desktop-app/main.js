@@ -523,14 +523,6 @@ async function bootstrap() {
     // whether ``resourcesPath`` exists (packaged mode); in dev there's
     // no ``extraResources/`` so the updater is a no-op.
     const updaterEnabled = electron_1.app.isPackaged && !isDevMode;
-    // Apply staged payloads BEFORE the backend starts. This way the new
-    // SPA and bundled content-packs are what the user sees on launch;
-    // the backend picks up the new content-packs from its lifespan.
-    // If the apply breaks the backend (rare), the /ready watcher
-    // triggers a rollback and we restore the previous install.
-    if (updaterEnabled) {
-        await (0, electron_integration_1.wireUpdaterEarly)();
-    }
     // Resolve the backend port NOW so the injected config script can
     // carry it. We pick the port before spawning so two consecutive
     // launches don't race for the same number.

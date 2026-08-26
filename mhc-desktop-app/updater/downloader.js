@@ -52,12 +52,19 @@ async function downloadToFile(url, dest, opts = {}) {
     opts.signal?.addEventListener("abort", () => ctrl.abort());
     const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 5 * 60 * 1000);
     let resp;
+    // Fast-path: caller already aborted before we started.
+    if (opts.signal?.aborted) {
+        clearTimeout(timer);
+        throw new DownloadError(`download ${url} aborted by caller`, { cause: new Error("aborted") });
+    }
     try {
         resp = await fetch(url, { signal: ctrl.signal });
     }
     catch (e) {
         clearTimeout(timer);
-        throw new DownloadError(`download ${url} failed: ${e.message}`, { cause: e });
+        const aborted = opts.signal?.aborted === true || ctrl.signal.aborted;
+        const reason = aborted ? "aborted by caller" : e.message;
+        throw new DownloadError(`download ${url} ${aborted ? "" : "failed: "}${reason}`, { cause: e });
     }
     if (!resp.ok || !resp.body) {
         clearTimeout(timer);
