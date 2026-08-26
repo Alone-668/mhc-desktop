@@ -4,7 +4,7 @@ import { useMCPsStore } from "../stores/mcps"
 import { api, type MCPServer } from "../api/client"
 import Icon from "../components/Icon.vue"
 import { ask } from "../lib/confirm"
-import { t } from "../i18n"
+import { t, pickI18n } from "../i18n"
 
 const store = useMCPsStore()
 
@@ -314,7 +314,7 @@ async function saveNew() {
           <div class="row">
             <div class="grow">
               <div class="title">
-                {{ s.name }}
+                {{ pickI18n(s, s.name) }}
                 <span v-if="s.origin === 'imported'" class="origin-badge">
                   {{ t("mcp.imported") }}
                 </span>
@@ -409,7 +409,7 @@ async function saveNew() {
         <header class="detail-head">
           <div class="grow">
             <h3>
-              {{ selected.name }}
+              {{ pickI18n(selected, selected.name) }}
               <span class="origin-badge small">
                 {{ t(`mcp.${selected.origin}`) }}
               </span>

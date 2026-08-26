@@ -12,7 +12,7 @@ import { api, type Tool } from "../api/client"
 import { useToolsStore } from "../stores/tools"
 import Icon from "../components/Icon.vue"
 import { ask } from "../lib/confirm"
-import { t, pickI18n } from "../i18n"
+import { t, pickI18n, locale } from "../i18n"
 
 const store = useToolsStore()
 
@@ -41,12 +41,20 @@ onMounted(() => {
 
 const items = computed(() => store.items)
 
+/** Display name actually rendered for the current locale (the
+ *  list prefers ``display_name_i18n[locale]``; ``name`` is the
+ *  canonical fallback). Editing this is what updates the list.
+ */
+function shownName(s: Tool | null): string {
+  return s ? pickI18n(s, s.name) : ""
+}
+
 async function selectBySlug(slug: string) {
   const found = items.value.find((s) => s.slug === slug)
   if (!found) return
   selected.value = found
   editing.value = false
-  editName.value = found.name
+  editName.value = shownName(found)
   editModelName.value = found.model_name || ""
 }
 
@@ -184,7 +192,7 @@ async function exportTool(s: Tool) {
 
 function startEdit() {
   if (!selected.value) return
-  editName.value = selected.value.name
+  editName.value = shownName(selected.value)
   editModelName.value = selected.value.model_name || ""
   editing.value = true
 }
@@ -192,7 +200,7 @@ function startEdit() {
 function cancelEdit() {
   editing.value = false
   if (selected.value) {
-    editName.value = selected.value.name
+    editName.value = shownName(selected.value)
     editModelName.value = selected.value.model_name || ""
   }
 }
@@ -201,10 +209,28 @@ async function saveEdit() {
   if (!selected.value) return
   saving.value = true
   clearStatus()
-  const body: { name?: string; model_name?: string } = {
-    name: editName.value.trim() || selected.value.name,
+  const newName = editName.value.trim() || shownName(selected.value)
+  // The field edits the display name the current locale actually
+  // renders. Persist it as ``display_name_i18n[locale]`` so the
+  // list updates immediately and other locales keep their own
+  // translations. When the tool has NO localized names at all,
+  // also write ``name`` so the canonical fallback follows.
+  // Snapshot the ORIGINAL map before we add the current-locale
+  // entry — an empty-map tool (no manifest i18n) also needs
+  // ``name`` updated so the canonical fallback follows.
+  const hadI18n = !!(selected.value.display_name_i18n
+    && Object.keys(selected.value.display_name_i18n).length)
+  const i18nMap = selected.value.display_name_i18n
+    ? { ...selected.value.display_name_i18n }
+    : {}
+  i18nMap[locale.value] = newName
+  const body: Record<string, unknown> = {
+    display_name_i18n: i18nMap,
+    model_name: editModelName.value.trim(),
   }
-  body.model_name = editModelName.value.trim()
+  if (!hadI18n) {
+    body.name = newName
+  }
   try {
     const updated = await store.update(selected.value.slug, body)
     selected.value = updated
@@ -298,7 +324,7 @@ async function saveEdit() {
         <header class="detail-head">
           <div class="grow">
             <h3>
-              {{ selected.name }}
+              {{ shownName(selected) }}
               <span class="origin-badge small" :class="`kind-${selected.kind}`">
                 {{ t(`tools.kind.${selected.kind}`) }}
               </span>

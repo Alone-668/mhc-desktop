@@ -340,3 +340,18 @@ def _mount_spa(app: FastAPI) -> None:
             if index.is_file():
                 return FileResponse(str(index))
         return response
+
+    # API responses must never be cached by the renderer's HTTP
+    # cache. Without an explicit Cache-Control the browser may
+    # heuristically re-serve a stale GET (e.g. the provider list
+    # from before a DELETE) and the UI would resurrect deleted
+    # rows on the next refresh. no-store on everything /api is
+    # the cheap, total fix — these endpoints are cheap local
+    # file reads, never a bottleneck.
+    @app.middleware("http")
+    async def _no_store_api(request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if path.startswith("/api") or path in ("/ready", "/health"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
