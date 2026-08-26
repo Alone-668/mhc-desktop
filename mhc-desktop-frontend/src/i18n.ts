@@ -32,23 +32,17 @@ const en: Record<string, string> = {
   "nav.chat": "Chat",
   "nav.models": "Models",
   "nav.skills": "Skills",
-  "nav.workspaceToolsHint": "No tools enabled.",
 
   // splash + lifecycle overlays
   "splash.loading": "Loading…",
   "splash.starting": "Starting backend… first launch can take a minute",
   "splash.exiting": "Shutting down…",
-  "nav.skillsHint": "More skills can be turned on in the Skills settings page.",
   "nav.mcp": "MCP",
   "nav.mcpHint": "More MCPs can be turned on in the MCP settings page.",
   "nav.tools": "Tools",
-  "nav.toolsHint": "More tools can be turned on in the Tools settings page.",
   "nav.settings": "Settings",
   "nav.metrics": "Usage",
   "nav.workspace": "Workspace",
-  "nav.workspaceHint":
-    "Toggle a skill here to carry it into the next message.",
-  "nav.workspaceSkillsHint": "No skills enabled.",
   "nav.workspaceMCPsHint": "No MCPs enabled.",
 
   // title bar
@@ -76,15 +70,7 @@ const en: Record<string, string> = {
     "No model selected. Enable a provider and pick a model.",
   "chat.noProvidersHint":
     "No providers enabled. Open the Models page to add one.",
-  "chat.attachedSkills": "{count, plural, one{# skill} other{# skills}} attached",
-  "chat.attachedSkillsTitle":
-    "Skills attached when this message was sent. They ride along with every LLM call inside the same agent run.",
-  "chat.attachedMCP": "{count, plural, one{# MCP} other{# MCPs}} attached",
-  "chat.attachedMCPTitle":
-    "MCP servers attached when this message was sent. Each one exposes tools that the model can call inside this run.",
-  "chat.attachedTools": "{count, plural, one{# tool} other{# tools}} attached",
-  "chat.attachedToolsTitle":
-    "Local tools attached when this message was sent. They run in-process inside this agent run.",
+
   "chat.attachedFiles": "{count, plural, one{# file} other{# files}} attached",
   "chat.attachedFilesTitle":
     "Files attached when this message was sent. The model receives only the absolute paths and reads each file via its tools — the binary stays on your disk.",
@@ -92,7 +78,12 @@ const en: Record<string, string> = {
   "chat.attachFiles": "Attach files (up to 5)",
   "chat.fileNoPath":
     "No absolute path available for this file — the model cannot read it.",
-  "chat.attachedCount": "{skills, plural, =0{} other{# skill}}{mcps, plural, =0{} other{ · # MCP}} attached",
+  "cap.skills": "Skills",
+  "cap.mcp": "MCP",
+  "cap.tools": "Tools",
+  "cap.files": "Files",
+  "cap.title": "Skills · MCP · Tools",
+  "cap.none": "None",
   "chat.toolCalls": "Tool calls",
   "chat.thinking": "Thinking",
   "chat.contextTitle":
@@ -299,10 +290,6 @@ const en: Record<string, string> = {
   "skills.files": "Files",
   "skills.editDescription": "Description (frontmatter)",
   "skills.editBody": "Body (markdown)",
-  "skills.activeChip":
-    "{count, plural, one{# skill} other{# skills}} attached to next message",
-  "mcp.activeChip":
-    "{count, plural, one{# MCP} other{# MCPs}} attached to next message",
 
   // tools (third concept — local / script / remote)
   "tools.title": "Tools",
@@ -324,8 +311,7 @@ const en: Record<string, string> = {
   "tools.bulkSkipped": "Skipped",
   "tools.bulkErrors": "Errors",
   "tools.importOverwrite": "Overwrite if slug exists",
-  "tools.activeChip":
-    "{count, plural, one{# tool} other{# tools}} attached to next message",
+
   "tools.exportTitle": "Export tool",
   "tools.exportHint":
     "Download this tool's manifest as JSON. Use it to share the config or import on another machine.",
@@ -445,8 +431,6 @@ const zh: Record<string, string> = {
   "nav.chat": "对话",
   "nav.models": "模型配置",
   "nav.skills": "技能",
-  "nav.skillsHint": "更多的技能可以在“技能”设置页面打开。",
-  "nav.workspaceToolsHint": "未启用任何工具。",
 
   // splash + lifecycle overlays
   "splash.loading": "加载中…",
@@ -455,12 +439,9 @@ const zh: Record<string, string> = {
   "nav.mcp": "MCP",
   "nav.mcpHint": "更多的 MCP 可以在“MCP”设置页面打开。",
   "nav.tools": "工具",
-  "nav.toolsHint": "更多的工具可以在“工具”设置页面打开。",
   "nav.settings": "设置",
   "nav.metrics": "用量",
   "nav.workspace": "工作区",
-  "nav.workspaceHint": "在这里切换某个技能，以带入下一次对话。",
-  "nav.workspaceSkillsHint": "未启用任何技能。",
   "nav.workspaceMCPsHint": "未启用任何 MCP。",
 
   // title bar
@@ -485,22 +466,18 @@ const zh: Record<string, string> = {
   "chat.stop": "停止生成",
   "chat.noModelSelected": "未选择模型。请启用服务商并选择一个模型。",
   "chat.noProvidersHint": "没有启用的服务商。打开“模型配置”页面来添加一个。",
-  "chat.attachedSkills": "{count, plural, other{# 个技能}}已附上",
-  "chat.attachedSkillsTitle":
-    "本条消息发送时附带的技能。它们会随本次 agent run 内的每一次大模型调用一起注入。",
-  "chat.attachedMCP": "{count, plural, other{# 个 MCP}}已附上",
-  "chat.attachedTools": "{count, plural, other{# 个工具}}已附上",
   "chat.attachedFiles": "{count, plural, other{# 个文件}}已附上",
   "chat.attachedFilesTitle":
     "本条消息发送时附带的文件。只会上传绝对路径，模型通过本地工具读取原文，原始内容始终保留在你的磁盘上。",
   "chat.attachedFilesMax": "已达到 {count} 个文件上限 — 移除一个后再添加新的。",
   "chat.attachFiles": "附加文件（最多 5 个）",
   "chat.fileNoPath": "该文件没有可用的绝对路径，模型无法读取。",
-  "chat.attachedMCPTitle":
-    "本条消息发送时附带的 MCP 服务器。每个服务器都会把它的工具开放给本次 run 内的模型调用。",
-  "chat.attachedToolsTitle":
-    "本条消息发送时附带的本地工具。它们会在本次 agent run 内以进程内方式执行。",
-  "chat.attachedCount": "已附 {skills, plural, =0{} other{# 个技能}}{mcps, plural, =0{} other{ · # 个 MCP}}",
+  "cap.skills": "技能",
+  "cap.mcp": "MCP",
+  "cap.tools": "工具",
+  "cap.files": "文件",
+  "cap.title": "技能 · MCP · 工具",
+  "cap.none": "无",
   "chat.toolCalls": "工具调用",
   "chat.thinking": "思考",
   "chat.contextTitle":
@@ -698,8 +675,6 @@ const zh: Record<string, string> = {
   "skills.files": "文件",
   "skills.editDescription": "描述（frontmatter）",
   "skills.editBody": "正文（markdown）",
-  "skills.activeChip": "下次消息将附带 {count} 个技能",
-  "mcp.activeChip": "下次消息将附带 {count} 个 MCP",
   "tools.title": "工具",
   "tools.hint":
     "工具是可被模型调用的可执行单元。本地/内置工具为进程内 Python 调用；脚本与远程类型在该构建中为存根。",
@@ -719,7 +694,6 @@ const zh: Record<string, string> = {
   "tools.bulkSkipped": "已跳过",
   "tools.bulkErrors": "错误",
   "tools.importOverwrite": "如果 slug 已存在则覆盖",
-  "tools.activeChip": "下次消息将附带 {count} 个工具",
   "tools.exportTitle": "导出工具",
   "tools.exportHint": "以 JSON 形式下载该工具的清单。",
   "tools.download": "下载清单",

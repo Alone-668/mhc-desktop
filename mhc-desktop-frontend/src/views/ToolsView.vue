@@ -311,15 +311,25 @@ async function saveEdit() {
         </header>
 
         <div class="detail-actions">
-          <button class="btn-secondary" @click="exportTool(selected)">
+          <button
+            class="btn-secondary"
+            @click="exportTool(selected)"
+          >
             <Icon name="download" />
             {{ t("tools.download") }}
           </button>
-          <button class="btn-secondary" @click="startEdit" :disabled="editing">
+          <button
+            class="btn-secondary"
+            @click="startEdit"
+            :disabled="editing"
+          >
             <Icon name="edit" />
             {{ t("common.edit") }}
           </button>
-          <button class="btn-danger" @click="removeTool(selected)">
+          <button
+            class="btn-danger"
+            @click="removeTool(selected)"
+          >
             <Icon name="trash" />
             {{ t("common.delete") }}
           </button>

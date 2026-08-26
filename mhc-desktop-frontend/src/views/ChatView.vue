@@ -7,7 +7,7 @@ import { useSkillsStore } from "../stores/skills"
 import { useMCPsStore } from "../stores/mcps"
 import { useToolsStore } from "../stores/tools"
 import { api, type ChatMessage, type LLMToolCall } from "../api/client"
-import Icon from "../components/Icon.vue"
+import Icon, { type IconName } from "../components/Icon.vue"
 import MarkdownView from "../components/MarkdownView.vue"
 import ToolCallCapsule from "../components/ToolCallCapsule.vue"
 import ThinkingBlock from "../components/ThinkingBlock.vue"
@@ -137,6 +137,11 @@ onMounted(async () => {
   await Promise.all([
     store.refresh(),
     sessions.refresh(),
+    // Skills: still refresh on mount so the Skills route / the
+    // backend's system-prompt template stay in sync. We no longer
+    // carry a per-session "active" set — the backend now lists
+    // every enabled skill in the system prompt on every request,
+    // and the model pulls bodies through load_skill.
     skills.refresh(),
     mcps.refresh(),
     tools.refresh(),
@@ -149,9 +154,6 @@ onMounted(async () => {
   if (sessions.items.length > 0 && !sessions.currentId) {
     await sessions.select(sessions.items[0].id)
   }
-  skills.setCurrentSession(sessions.currentId)
-  mcps.setCurrentSession(sessions.currentId)
-  tools.setCurrentSession(sessions.currentId)
   // Re-subscribe to the initial session if the store already picked
   // one (watch with immediate:true handles this in the next tick).
 })
@@ -168,9 +170,6 @@ onBeforeUnmount(async () => {
 watch(
   () => sessions.currentId,
   async (id) => {
-    skills.setCurrentSession(id)
-    mcps.setCurrentSession(id)
-    tools.setCurrentSession(id)
     unsubBus?.()
     unsubBus = null
     if (!id) {
@@ -435,8 +434,6 @@ function composeMessagesForPersist(): ChatMessage[] {
     .map((m) => ({
       role: m.role,
       content: m.content,
-      skills:
-        m.role === "user" && m.skills && m.skills.length > 0 ? m.skills : undefined,
       mcp: m.role === "user" && m.mcp && m.mcp.length > 0 ? m.mcp : undefined,
       tools:
         m.role === "user" && m.tools && m.tools.length > 0 ? m.tools : undefined,
@@ -504,7 +501,9 @@ function buildLLMMessages(
         role: "user",
         content: m.content || "",
       }
-      if (m.skills && m.skills.length > 0) u.skills = m.skills
+      // Skills are no longer carried per-message — the backend
+      // builds the ``## Skills`` section in the system prompt
+      // from the live store, on every request.
       if (m.mcp && m.mcp.length > 0) u.mcp = m.mcp
       if (m.tools && m.tools.length > 0) u.tools = m.tools
       if (m.files && m.files.length > 0) u.files = m.files
@@ -581,9 +580,14 @@ async function send() {
     if (!sessions.currentId) return
   }
 
-  const attachedSkills = [...skills.active]
-  const attachedMCPs = [...mcps.active]
-  const attachedTools = [...tools.active]
+  // MCP follows skills/tools: every enabled server rides along.
+  const attachedMCPs = mcps.enabled.map((s) => s.slug)
+  // Tools no longer have a per-session toggle — the sidebar
+  // switches were removed in favour of the Tools config page.
+  // Every enabled tool rides along on every send (mirroring
+  // how skills are auto-listed server-side). load_skill is
+  // always-on regardless.
+  const attachedTools = tools.enabledTools.map((t) => t.slug)
   const sid = sessions.currentId
   const assistantId = crypto.randomUUID()
 
@@ -591,7 +595,8 @@ async function send() {
     id: crypto.randomUUID(),
     role: "user",
     content: text,
-    skills: attachedSkills.length > 0 ? attachedSkills : undefined,
+    // No more ``skills`` field on user messages — the backend
+    // lists enabled skills in the per-request system prompt.
     mcp: attachedMCPs.length > 0 ? attachedMCPs : undefined,
     tools: attachedTools.length > 0 ? attachedTools : undefined,
     files: files.length > 0 ? files : undefined,
@@ -618,7 +623,6 @@ async function send() {
   const payload = {
     provider: currentProviderName.value,
     model: currentModelCode.value,
-    skills: attachedSkills,
     mcp: attachedMCPs,
     tools: attachedTools,
     // LLM-shaped: assistant messages keep their tool_calls and the
@@ -853,14 +857,106 @@ function onComposerDrop(ev: DragEvent) {
   addFiles(ev.dataTransfer.files)
 }
 
-function skillName(slug: string): string {
-  return skills.items.find((s) => s.slug === slug)?.name ?? slug
+/** Hover popover for the "cap" capsules. A cap is a single pill
+  that packs several counters (skills / MCP / tools [/ files in
+  bubbles]); hovering opens ONE fixed-position popover listing
+  every section together, scrollable when a list runs long.
+  One shared state drives it so any number of capsules reuse it
+  without each managing its own popup. */
+interface CapEntry {
+  name: string
+  sub?: string
 }
-function mcpName(slug: string): string {
-  return mcps.items.find((s) => s.slug === slug)?.name ?? slug
+interface CapSection {
+  title: string
+  icon: IconName
+  entries: CapEntry[]
 }
-function toolName(slug: string): string {
-  return tools.items.find((s) => s.slug === slug)?.name ?? slug
+interface CapPop {
+  x: number
+  y: number
+  sections: CapSection[]
+}
+const capPop = ref<CapPop | null>(null)
+// When the cursor moves from a capsule onto the popover, keep the
+// popover alive instead of letting the capsule's mouseleave kill it.
+const capPinned = ref(false)
+
+const CAP_POP_W = 252
+function showCap(e: MouseEvent, sections: CapSection[]) {
+  // Estimated height: section header + ~20px per entry. Long lists
+  // are capped and scroll inside the popover instead of running
+  // off the screen.
+  const raw = 12 + sections.reduce((acc, s) => acc + 22 + s.entries.length * 20, 0)
+  const h = Math.min(raw, 300)
+  // Prefer below-right of the cursor; flip to above/left when the
+  // popover would otherwise cross a viewport edge.
+  let x = e.clientX + 12
+  let y = e.clientY + 16
+  if (x + CAP_POP_W > window.innerWidth - 8) x = e.clientX - CAP_POP_W - 12
+  if (y + h > window.innerHeight - 8) y = e.clientY - h - 12
+  capPop.value = { x: Math.max(8, x), y: Math.max(8, y), sections }
+}
+function hideCap() {
+  if (capPinned.value) return
+  capPop.value = null
+}
+function pinCap() {
+  capPinned.value = true
+}
+function capEntriesBySlug(
+  items: Array<{ slug: string; name: string }>,
+  slugs: string[] | undefined,
+  sub?: (item: { kind?: string }) => string,
+): CapEntry[] {
+  if (!slugs) return []
+  const bySlug = new Map(items.map((i) => [i.slug, i]))
+  return slugs.map((s) => {
+    const item: any = bySlug.get(s)
+    return { name: item?.name ?? s, sub: item && sub ? sub(item) : undefined }
+  })
+}
+function fileCapEntries(
+  files: Array<{ name: string; path?: string }> | undefined,
+): CapEntry[] {
+  if (!files) return []
+  return files.map((f) => ({ name: f.name, sub: f.path }))
+}
+
+// Enabled skills (what the backend lists in the system prompt's
+// ``## Skills`` section for the NEXT message).
+const sendSkillSlugs = computed(() => skills.enabled.map((s) => s.slug))
+// Enabled MCPs ride along on every send (no per-session active set).
+const sendMcpSlugs = computed(() => mcps.enabled.map((s) => s.slug))
+// Enabled tools ride along on every send (sidebar switches removed).
+const sendToolSlugs = computed(() => tools.enabledTools.map((t) => t.slug))
+
+/** Sections for the composer capsule: all three, even at zero. */
+function sendCapSections(): CapSection[] {
+  return [
+    { title: t("cap.skills"), icon: "package", entries: capEntriesBySlug(skills.items, sendSkillSlugs.value) },
+    { title: t("cap.mcp"), icon: "server", entries: capEntriesBySlug(mcps.items, sendMcpSlugs.value) },
+    { title: t("cap.tools"), icon: "wrench", entries: capEntriesBySlug(tools.items, sendToolSlugs.value, (t) => `(${t.kind})`) },
+  ]
+}
+
+/** Sections for a user-message bubble: only the kinds actually present.
+ *  Order is fixed (skills, mcp, tools, files) regardless of presence.
+ */
+function bubbleCapSections(m: LocalMessage): CapSection[] {
+  const out: CapSection[] = []
+  const push = (title: string, icon: IconName, entries: CapEntry[]) => {
+    if (entries.length) out.push({ title, icon, entries })
+  }
+  push(t("cap.skills"), "package", capEntriesBySlug(skills.items, m.skills))
+  push(t("cap.mcp"), "server", capEntriesBySlug(mcps.items, m.mcp))
+  push(t("cap.tools"), "wrench", capEntriesBySlug(tools.items, m.tools, (t) => `(${t.kind})`))
+  push(t("cap.files"), "paperclip", fileCapEntries(m.files))
+  return out
+}
+
+function bubbleHasCaps(m: LocalMessage): boolean {
+  return !!(m.skills?.length || m.mcp?.length || m.tools?.length || m.files?.length)
 }
 function toolSlug(name: string): string {
   // MCP names are "<slug>::<tool>", Tool names are just "<slug>".
@@ -1086,72 +1182,32 @@ function groupTimelineSegments(
               />
             </div>
 
-            <div
-              v-if="(item as unknown as LocalMessage).role === 'user' && (item as unknown as LocalMessage).skills && (item as unknown as LocalMessage).skills!.length > 0"
-              class="msg-skills"
-              :title="t('chat.attachedSkillsTitle')"
+                        <span v-if="(item as unknown as LocalMessage).role === 'user' && bubbleHasCaps(item as unknown as LocalMessage)"
+              class="msg-caps"
             >
-              <span class="msg-skills-icon" aria-hidden="true">⊕</span>
-              <span class="msg-skills-label">{{ t('chat.attachedSkills', { count: (item as unknown as LocalMessage).skills!.length }) }}</span>
-              <span class="msg-skills-list">
-                <span v-for="slug in (item as unknown as LocalMessage).skills" :key="slug" class="msg-skills-pill">
-                  {{ skillName(slug) }}
+              <span class="cap cap-all" :title="t('cap.title')"
+                @mouseenter="showCap($event, bubbleCapSections(item as unknown as LocalMessage))"
+                @mouseleave="hideCap"
+              >
+                <span v-if="(item as unknown as LocalMessage).skills?.length" class="cap-item cap-skills">
+                  <Icon name="package" />
+                  <span class="cap-n">{{ (item as unknown as LocalMessage).skills!.length }}</span>
+                </span>
+                <span v-if="(item as unknown as LocalMessage).mcp?.length" class="cap-item cap-mcp">
+                  <Icon name="server" />
+                  <span class="cap-n">{{ (item as unknown as LocalMessage).mcp!.length }}</span>
+                </span>
+                <span v-if="(item as unknown as LocalMessage).tools?.length" class="cap-item cap-tools">
+                  <Icon name="wrench" />
+                  <span class="cap-n">{{ (item as unknown as LocalMessage).tools!.length }}</span>
+                </span>
+                <span v-if="(item as unknown as LocalMessage).files?.length" class="cap-item cap-files">
+                  <Icon name="paperclip" />
+                  <span class="cap-n">{{ (item as unknown as LocalMessage).files!.length }}</span>
                 </span>
               </span>
-            </div>
-            <div
-              v-if="(item as unknown as LocalMessage).role === 'user' && (item as unknown as LocalMessage).mcp && (item as unknown as LocalMessage).mcp!.length > 0"
-              class="msg-skills"
-              :title="t('chat.attachedMCPTitle')"
-            >
-              <span class="msg-skills-icon" aria-hidden="true">⚙</span>
-              <span class="msg-skills-label">{{ t('chat.attachedMCP', { count: (item as unknown as LocalMessage).mcp!.length }) }}</span>
-              <span class="msg-skills-list">
-                <span v-for="slug in (item as unknown as LocalMessage).mcp" :key="slug" class="msg-skills-pill">
-                  {{ mcpName(slug) }}
-                </span>
-              </span>
-            </div>
-            <div
-              v-if="(item as unknown as LocalMessage).role === 'user' && (item as unknown as LocalMessage).tools && (item as unknown as LocalMessage).tools!.length > 0"
-              class="msg-skills msg-tools"
-              :title="t('chat.attachedToolsTitle')"
-            >
-              <span class="msg-skills-icon" aria-hidden="true">🛠</span>
-              <span class="msg-skills-label">{{ t('chat.attachedTools', { count: (item as unknown as LocalMessage).tools!.length }) }}</span>
-              <span class="msg-skills-list">
-                <span v-for="slug in (item as unknown as LocalMessage).tools" :key="slug" class="msg-skills-pill">
-                  {{ toolName(slug) }}
-                </span>
-              </span>
-            </div>
+            </span>
 
-            <!-- Attached files. Same visual position as the
-                 skill/MCP/tool chip rows so the bubble's footer
-                 is consistent. Files get a slightly larger
-                 capsule (user-facing requirement: "files are a
-                 common type, so a slightly larger pill is
-                 fine"). On reload the chips rebuild from the
-                 persisted ``files`` metadata so the rebuilt UI
-                 matches what the user saw when sending. -->
-            <div
-              v-if="(item as unknown as LocalMessage).role === 'user' && (item as unknown as LocalMessage).files && (item as unknown as LocalMessage).files!.length > 0"
-              class="msg-skills msg-files"
-              :title="t('chat.attachedFilesTitle')"
-            >
-              <span class="msg-skills-icon" aria-hidden="true">📎</span>
-              <span class="msg-skills-label">{{ t('chat.attachedFiles', { count: (item as unknown as LocalMessage).files!.length }) }}</span>
-              <span class="msg-files-list">
-                <span
-                  v-for="(f, fi) in (item as unknown as LocalMessage).files"
-                  :key="(f.path || f.name) + ':' + fi"
-                  class="msg-files-pill"
-                  :title="f.path || t('chat.fileNoPath')"
-                >
-                  <span class="msg-files-pill-name">{{ f.name }}</span>
-                </span>
-              </span>
-            </div>
 
             <!-- Cancelled hint. A stopped run keeps everything the
                  user already consumed; this small footer line marks
@@ -1192,71 +1248,7 @@ function groupTimelineSegments(
 
     <div v-if="expanded" class="backdrop" @click="expanded = false" />
 
-    <div
-      v-if="skills.active.size > 0 || mcps.active.size > 0 || tools.active.size > 0"
-      class="active-bar"
-      :class="{ expanded }"
-    >
-      <div class="active-bar-inner">
-        <span class="active-label">
-          {{
-            [
-              skills.active.size > 0
-                ? t('skills.activeChip', { count: skills.active.size })
-                : '',
-              mcps.active.size > 0
-                ? t('mcp.activeChip', { count: mcps.active.size })
-                : '',
-              tools.active.size > 0
-                ? t('tools.activeChip', { count: tools.active.size })
-                : '',
-            ]
-              .filter(Boolean)
-              .join(' · ')
-          }}
-        </span>
-        <div class="active-chips">
-          <span
-            v-for="slug in [...skills.active]"
-            :key="`skill:${slug}`"
-            class="active-chip"
-          >
-            {{ skills.items.find((s) => s.slug === slug)?.name ?? slug }}
-            <button
-              class="chip-x"
-              :title="t('common.delete')"
-              @click="skills.toggleActive(slug)"
-            >×</button>
-          </span>
-          <span
-            v-for="slug in [...mcps.active]"
-            :key="`mcp:${slug}`"
-            class="active-chip mcp-chip"
-          >
-            {{ mcps.items.find((s) => s.slug === slug)?.name ?? slug }}
-            <button
-              class="chip-x"
-              :title="t('common.delete')"
-              @click="mcps.toggleActive(slug)"
-            >×</button>
-          </span>
-          <span
-            v-for="slug in [...tools.active]"
-            :key="`tool:${slug}`"
-            class="active-chip tool-chip"
-          >
-            {{ tools.items.find((t) => t.slug === slug)?.name ?? slug }}
-            <button
-              class="chip-x"
-              :title="t('common.delete')"
-              @click="tools.toggleActive(slug)"
-            >×</button>
-          </span>
-        </div>
-      </div>
-    </div>
-
-    <div class="composer-wrap" :class="{ expanded }">
+        <div class="composer-wrap" :class="{ expanded }">
       <div
         class="composer"
         @dragover="onComposerDragOver"
@@ -1477,6 +1469,30 @@ function groupTimelineSegments(
           </div>
 
           <div class="actions-right">
+            <!-- Cap capsule: one pill packing all counters for the
+                 next message. Skills = enabled (backend lists them
+                 in the system prompt); MCP/tools = every enabled
+                 server/tool riding along. Hover opens one popover
+                 with all three detail lists together. -->
+            <span class="cap cap-all"
+              :class="{ zero: !sendSkillSlugs.length && !sendMcpSlugs.length && !sendToolSlugs.length }"
+              :title="t('cap.title')"
+              @mouseenter="showCap($event, sendCapSections())"
+              @mouseleave="hideCap"
+            >
+              <span class="cap-item cap-skills" :title="t('cap.skills')">
+                <Icon name="package" />
+                <span class="cap-n">{{ sendSkillSlugs.length }}</span>
+              </span>
+              <span class="cap-item cap-mcp" :title="t('cap.mcp')">
+                <Icon name="server" />
+                <span class="cap-n">{{ sendMcpSlugs.length }}</span>
+              </span>
+              <span class="cap-item cap-tools" :title="t('cap.tools')">
+                <Icon name="wrench" />
+                <span class="cap-n">{{ sendToolSlugs.length }}</span>
+              </span>
+            </span>
             <!--
               Send / Stop button. While ``streaming`` is true we morph
               into a red square stop button (same shape as the recordings
@@ -1510,7 +1526,35 @@ function groupTimelineSegments(
         </div>
       </div>
     </div>
-  </section>
+      <!-- Shared hover popover for every cap badge. position:fixed so
+         it escapes the scrolling message list. Moving the cursor
+         onto the popover pins it (capPinned). -->
+    <div
+      v-if="capPop"
+      class="cap-pop"
+      :style="{ left: capPop.x + 'px', top: capPop.y + 'px' }"
+      @mouseenter="pinCap"
+      @mouseleave="capPinned = false; hideCap()"
+    >
+      <div class="cap-pop-scroll">
+        <div v-for="(sec, si) in capPop.sections" :key="si" class="cap-pop-sec">
+          <div class="cap-pop-sec-title">
+            <Icon :name="sec.icon" :width="12" :height="12" />
+            <span>{{ sec.title }}</span>
+            <span class="cap-pop-sec-count">{{ sec.entries.length }}</span>
+          </div>
+          <ul class="cap-pop-list">
+            <li v-if="sec.entries.length === 0" class="cap-pop-empty">{{ t('cap.none') }}</li>
+            <li v-for="(entry, i) in sec.entries" :key="i" class="cap-pop-item">
+              <span class="cap-pop-name">{{ entry.name }}</span>
+              <span v-if="entry.sub" class="cap-pop-sub">{{ entry.sub }}</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+</section>
 </template>
 
 <style scoped>
@@ -1643,91 +1687,6 @@ function groupTimelineSegments(
   text-decoration: underline;
 }
 
-.msg-skills {
-  margin-top: 8px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--app-font-size, 12px);
-  color: var(--text-mid);
-}
-.msg-skills-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-weight: 700;
-  font-size: 11px;
-  line-height: 1;
-}
-.msg-skills-label {
-  font-weight: 500;
-}
-.msg-skills-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.msg-skills-pill {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 1px 8px;
-  font-size: 10.5px;
-  color: var(--text-mute);
-}
-.msg-tools .msg-skills-icon {
-  background: rgba(168, 107, 255, 0.14);
-  color: #a86bff;
-}
-.msg-tools .msg-skills-pill {
-  background: rgba(168, 107, 255, 0.08);
-  border-color: rgba(168, 107, 255, 0.32);
-  color: #a86bff;
-}
-
-/* ── Attached files (chip row under user bubbles) ─────────────── */
-/* Files are the most common attachment type, so the pill is
-   slightly larger than skill/MCP/tool pills — taller, more
-   padding, bigger font. The icon uses the same accent-soft
-   bucket as skills (no purple). Multiple pills lay out in a
-   row that wraps to the next line when the bubble is narrow. */
-.msg-files .msg-skills-icon {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-.msg-files-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  max-width: 100%;
-}
-.msg-files-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 3px 11px;
-  font-size: 12px;
-  color: var(--text);
-  max-width: 100%;
-  /* Filenames can be long; ellipsize instead of wrapping the
-     pill text so the row stays tidy on overflow. */
-  min-width: 0;
-}
-.msg-files-pill-name {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 22ch;
-}
 .error {
   color: var(--danger);
   font-size: 13px;
@@ -1980,60 +1939,17 @@ function groupTimelineSegments(
   color: var(--text-mute);
 }
 
-.active-bar {
-  padding: 0 32px;
-  background: var(--fade);
-}
-.active-bar.expanded {
-  position: fixed;
-  top: 36px;
-  left: 0;
-  right: 0;
-  z-index: 60;
-  padding: 0;
-  background: var(--bg);
-  border-bottom: 1px solid var(--border-faint);
-}
-.active-bar-inner {
-  max-width: clamp(720px, 78vw, 960px);
-  margin: 0 auto;
-  padding: 6px 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 12px;
-  color: var(--text-mid);
-  flex-wrap: wrap;
-}
+
+
+
 .active-label {
   font-weight: 500;
   flex-shrink: 0;
 }
-.active-chips {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-.active-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 4px 2px 8px;
-  border-radius: 999px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  font-size: var(--app-font-size, 12px);
-  color: var(--text);
-}
-.active-chip.mcp-chip {
-  border-color: #16a34a;
-  background: rgba(22, 163, 74, 0.06);
-}
-.active-chip.tool-chip {
-  border-color: #7c3aed;
-  background: rgba(124, 58, 237, 0.06);
-}
+
+
+
+
 .chip-x {
   border: 0;
   background: transparent;
@@ -2300,4 +2216,127 @@ function groupTimelineSegments(
   margin-top: 4px;
   max-width: none;
 }
+/* Cap badges: icon + count, hover opens the shared popover. */
+/* Flat "engraved" counters: no pill, no border, no background.
+   Icons + counts sit inline, tinted per kind, so they read as
+   a quiet stamp instead of a button. */
+.cap {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--text-faint);
+  font-size: var(--app-font-size, 12px);
+  cursor: default;
+  white-space: nowrap;
+  transition: color 0.12s ease;
+}
+.cap:hover {
+  color: var(--text-mid);
+}
+.cap-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.cap-item + .cap-item {
+  margin-left: 8px;
+}
+.cap .cap-n {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text-faint);
+}
+.cap.zero {
+  opacity: 0.6;
+}
+.cap-skills svg { color: #16a34a; }
+.cap-mcp svg { color: #2563eb; }
+.cap-tools svg { color: #7c3aed; }
+.cap-files svg { color: #d97706; }
+
+/* Message-bubble cap row: its own row at the bottom-left of the
+   bubble, never inline next to the text. */
+.msg-caps {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 8px;
+}
+
+/* Shared hover popover: fixed so it escapes scroll containers. The
+   popover holds several sections (skills / MCP / tools / files);
+   long lists scroll inside the fixed-height box. */
+.cap-pop {
+  position: fixed;
+  z-index: 1000;
+  width: 252px;
+  max-height: 300px;
+  background: var(--bg-elev, #fff);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  font-size: var(--app-font-size, 12px);
+}
+.cap-pop-scroll {
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 8px 10px;
+}
+.cap-pop-sec + .cap-pop-sec {
+  border-top: 1px solid var(--border);
+  margin-top: 7px;
+  padding-top: 7px;
+}
+.cap-pop-sec-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--text);
+}
+.cap-pop-sec-title svg {
+  color: var(--text-mid);
+}
+.cap-pop-sec-count {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+.cap-pop-list {
+  list-style: none;
+  margin: 3px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cap-pop-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: var(--text-mid);
+}
+.cap-pop-item:hover {
+  background: rgba(59, 130, 246, 0.06);
+  color: var(--text);
+}
+.cap-pop-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cap-pop-sub {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+.cap-pop-empty {
+  color: var(--text-faint);
+  font-style: italic;
+  padding: 2px 4px;
+}
+
 </style>

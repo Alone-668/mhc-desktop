@@ -17,19 +17,8 @@ import {
 // run commands and work with files without the user toggling them
 // on first. Only slugs that actually exist AND are enabled are
 // seeded — a missing/disabled tool is never shown or sent.
-const DEFAULT_TOOL_SLUGS = [
-  "cmd",
-  "powershell",
-  "read-file",
-  "write-file",
-  "append-file",
-  "edit-file",
-]
-
 export const useToolsStore = defineStore("tools", () => {
   const items = ref<Tool[]>([])
-  const currentId = ref<string | null>(null) // active session id
-  const active = ref<Set<string>>(new Set())
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -40,11 +29,6 @@ export const useToolsStore = defineStore("tools", () => {
     error.value = null
     try {
       items.value = await api.listTools()
-      // Drop active slugs that no longer exist
-      const existing = new Set(items.value.map((t) => t.slug))
-      for (const s of [...active.value]) {
-        if (!existing.has(s)) active.value.delete(s)
-      }
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
     } finally {
@@ -52,31 +36,6 @@ export const useToolsStore = defineStore("tools", () => {
     }
   }
 
-  function setCurrentSession(id: string | null) {
-    currentId.value = id
-    // Reset the active set when switching sessions. Tools are scoped
-    // per agent run the same way skills + MCPs are.
-    active.value = new Set()
-    // Seed the defaults: only tools that exist and are enabled get
-    // activated. A missing or disabled tool is skipped entirely —
-    // it never shows in the UI and never reaches the backend, so
-    // there is no broken-state fallback to design around.
-    if (items.value.length > 0) {
-      const bySlug = new Map(items.value.map((t) => [t.slug, t]))
-      const seed = new Set<string>()
-      for (const slug of DEFAULT_TOOL_SLUGS) {
-        const t = bySlug.get(slug)
-        if (t && t.enabled) seed.add(slug)
-      }
-      if (seed.size > 0) active.value = seed
-    }
-  }
-
-  function toggleActive(slug: string) {
-    if (active.value.has(slug)) active.value.delete(slug)
-    else active.value.add(slug)
-    active.value = new Set(active.value)
-  }
 
   async function create(body: Partial<Tool> & { name: string; kind?: ToolKind }) {
     const t = await api.createTool(body)
@@ -93,8 +52,6 @@ export const useToolsStore = defineStore("tools", () => {
   async function remove(slug: string) {
     await api.deleteTool(slug)
     items.value = items.value.filter((t) => t.slug !== slug)
-    active.value.delete(slug)
-    active.value = new Set(active.value)
   }
 
   async function setEnabled(slug: string, enabled: boolean) {
@@ -131,14 +88,10 @@ export const useToolsStore = defineStore("tools", () => {
 
   return {
     items,
-    currentId,
-    active,
     loading,
     error,
     enabledTools,
     refresh,
-    setCurrentSession,
-    toggleActive,
     create,
     update,
     remove,

@@ -184,7 +184,7 @@ const statusIcon = computed(() => {
   }
 })
 // Kind icon (left edge). Plug for MCP, hammer for Tool.
-const kindIcon = computed(() => (callKind.value === "mcp" ? "plug" : "hammer"))
+const kindIcon = computed(() => (callKind.value === "mcp" ? "plug" : "wrench"))
 </script>
 
 <template>
