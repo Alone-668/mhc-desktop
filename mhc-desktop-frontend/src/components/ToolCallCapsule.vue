@@ -35,6 +35,11 @@ const props = defineProps<{
   error?: string
   slug: string
   shortName: string
+  /** Optional pre-resolved localized display name for this tool.
+   *  When provided, the capsule shows this instead of the raw
+   *  shortName so a Chinese UI shows “读取文件” instead of
+   *  ``read-file``. */
+  displayName?: string
   /** Epoch ms of the tool_start event. Drives the live elapsed-time
    *  counter shown next to the tool name while executing. */
   startedAt?: number
@@ -205,7 +210,7 @@ const kindIcon = computed(() => (callKind.value === "mcp" ? "plug" : "wrench"))
       <span class="tc-kind" :class="'tc-kind-' + callKind">{{
         callKind === "tool" ? "Tool" : "MCP"
       }}</span>
-      <span class="tc-name">{{ shortName }}</span>
+      <span class="tc-name">{{ displayName || shortName }}</span>
       <span v-if="elapsedText" class="tc-elapsed">{{ elapsedText }}</span>
       <span class="tc-status" :class="'tc-status-' + status" aria-hidden="true">
         <Icon :name="statusIcon" :width="11" :height="11" />
@@ -224,7 +229,7 @@ const kindIcon = computed(() => (callKind.value === "mcp" ? "plug" : "wrench"))
             <Icon :name="kindIcon" :width="13" :height="13" />
             <span class="tc-head-slug">{{ slug }}</span>
             <span class="tc-head-sep">::</span>
-            <span class="tc-head-name">{{ shortName }}</span>
+            <span class="tc-head-name">{{ displayName || shortName }}</span>
           </div>
           <button class="tc-x" :title="'Close'" @click="open = false">
             <Icon name="x" :width="12" :height="12" />
@@ -396,10 +401,25 @@ const kindIcon = computed(() => (callKind.value === "mcp" ? "plug" : "wrench"))
   border-color: #7c3aed;
 }
 
-/* Subtle flash while pending/executing: only the LEFT edge pulses,
-   not the full border. Less noisy when many capsules are flashing
-   in parallel. */
-.tc.flashing .tc-pill {
+/* Pending capsule: dim whole-pill opacity pulse while the model
+   is still generating the tool-call args. Slow (1.8s) so it
+   reads as "thinking" not as a CSS glitch. Subtle background
+   tint so the user can pick it out from finished calls. */
+.tc.tc-pending .tc-pill {
+  background: color-mix(in srgb, var(--text-faint) 10%, transparent);
+  color: var(--text-mid);
+}
+.tc.tc-pending.flashing .tc-pill {
+  animation: tc-pulse-pending 1.8s ease-in-out infinite;
+  animation-delay: calc(var(--tc-index, 0) * 80ms);
+}
+@keyframes tc-pulse-pending {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+/* Executing capsule: left-edge pulse so users can tell many
+   calls running in parallel apart at a glance. */
+.tc.tc-executing.flashing .tc-pill {
   animation: tc-pulse-edge 1.4s ease-in-out infinite;
   animation-delay: calc(var(--tc-index, 0) * 80ms);
 }
@@ -407,7 +427,6 @@ const kindIcon = computed(() => (callKind.value === "mcp" ? "plug" : "wrench"))
   0%, 100% { box-shadow: inset 2px 0 0 transparent; }
   50%      { box-shadow: inset 2px 0 0 var(--tc-flash, var(--accent)); }
 }
-.tc.tc-pending.flashing { --tc-flash: var(--text-faint); }
 .tc.tc-kind-mcp.tc-executing.flashing { --tc-flash: var(--accent); }
 .tc.tc-kind-tool.tc-executing.flashing { --tc-flash: #7c3aed; }
 

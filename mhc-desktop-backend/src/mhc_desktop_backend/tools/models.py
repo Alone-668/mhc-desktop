@@ -81,6 +81,10 @@ class Tool:
     model_name: str = ""
     enabled: bool = True
     origin: str = "imported"  # "bundled" | "imported" | "local"
+    # Localized display names keyed by language tag (e.g. "en",
+    # "zh"). The LLM never sees these — they are for the UI.
+    # An empty dict / missing key falls back to ``name``.
+    display_name_i18n: dict[str, str] = field(default_factory=dict)
     source_path: str = ""
     version: str = ""
     license: str = ""

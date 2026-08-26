@@ -644,7 +644,12 @@ async function bootstrap() {
         mainWindow.hide()
         return
       }
-      // User picked exit.
+      // User picked exit. We already preventDefault'd above so
+      // the window won't close on its own; re-fire close() with
+      // isQuitting set so the recursive handler short-circuits.
+      isQuitting = true
+      mainWindow.close()
+      return
     } else {
       // Subsequent closes within this session always honour the
       // first choice — no need to re-prompt.

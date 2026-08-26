@@ -16,6 +16,13 @@
         "description": "Maximum wall-clock seconds to wait for the command to finish. Required. Default 60, hard cap 600. The cmd process is killed if this elapses before the command returns."
       }
     },
-    "required": ["command", "timeout"]
+    "required": [
+      "command",
+      "timeout"
+    ]
+  },
+  "display_name_i18n": {
+    "en": "Command Prompt",
+    "zh": "命令行"
   }
 }

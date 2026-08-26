@@ -12,7 +12,7 @@ import MarkdownView from "../components/MarkdownView.vue"
 import ToolCallCapsule from "../components/ToolCallCapsule.vue"
 import ThinkingBlock from "../components/ThinkingBlock.vue"
 import VirtualMessageList from "../components/VirtualMessageList.vue"
-import { t } from "../i18n"
+import { t, pickI18n } from "../i18n"
 
 const store = useProvidersStore()
 const sessions = useSessionsStore()
@@ -905,7 +905,7 @@ function pinCap() {
   capPinned.value = true
 }
 function capEntriesBySlug(
-  items: Array<{ slug: string; name: string }>,
+  items: Array<{ slug: string; name: string; display_name_i18n?: Record<string, string> }>,
   slugs: string[] | undefined,
   sub?: (item: { kind?: string }) => string,
 ): CapEntry[] {
@@ -913,7 +913,8 @@ function capEntriesBySlug(
   const bySlug = new Map(items.map((i) => [i.slug, i]))
   return slugs.map((s) => {
     const item: any = bySlug.get(s)
-    return { name: item?.name ?? s, sub: item && sub ? sub(item) : undefined }
+    const display = item ? pickI18n(item, item.name) : s
+    return { name: display, sub: item && sub ? sub(item) : undefined }
   })
 }
 function fileCapEntries(
@@ -964,6 +965,22 @@ function toolSlug(name: string): string {
 }
 function toolShortName(name: string): string {
   return name.includes("::") ? name.split("::")[1] : name
+}
+
+/** Resolve the localized display name for a tool call. For MCP
+ *  calls (namespaced ``<slug>::<tool>``) we look up the
+ *  matching MCP server; for plain tools we look up the tool by
+ *  its shortName. Falls back to the raw shortName so an
+ *  uninstalled / unknown tool still renders. */
+function toolDisplayName(name: string): string {
+  const short = toolShortName(name)
+  if (name.includes("::")) {
+    const slug = name.split("::")[0]
+    const m = mcps.items.find((x) => x.slug === slug)
+    return m ? pickI18n(m, short) : short
+  }
+  const tool = tools.items.find((x) => x.slug === short)
+  return tool ? pickI18n(tool, short) : short
 }
 
 /** Only the tail text run of a pending reply shows the streaming
@@ -1118,6 +1135,7 @@ function groupTimelineSegments(
                       :error="seg.call.error"
                       :slug="toolSlug(seg.call.name)"
                       :short-name="toolShortName(seg.call.name)"
+                      :display-name="toolDisplayName(seg.call.name)"
                       :started-at="seg.call.startedAt"
                       :duration-ms="seg.call.durationMs"
                     />
@@ -1177,6 +1195,7 @@ function groupTimelineSegments(
                 :error="tc.error"
                 :slug="toolSlug(tc.name)"
                 :short-name="toolShortName(tc.name)"
+                :display-name="toolDisplayName(tc.name)"
                 :started-at="tc.startedAt"
                 :duration-ms="tc.durationMs"
               />

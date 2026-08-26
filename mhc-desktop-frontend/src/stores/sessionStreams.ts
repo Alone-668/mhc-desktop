@@ -315,18 +315,57 @@ export const useSessionStreamsStore = defineStore("sessionStreams", () => {
           h.state.executionInFlight = true
         } else if (ev.type === "execution_end") {
           h.state.executionInFlight = false
-        } else if (ev.type === "tool_start") {
+        } else if (ev.type === "tool_args_start") {
+          // Model just started emitting a tool call — args
+          // haven't finished yet. Render a "pending" capsule
+          // so the user sees the call start immediately, not
+          // only once the tool is about to execute.
           const call: ToolCallState = {
             call_id: ev.call_id,
             kind: ev.kind,
-            name: ev.name,
-            args: ev.args,
-            status: "executing",
+            name: ev.name || "tool_call",
+            args: {},
+            status: "pending",
           }
           h.state.toolCalls.push(call)
-          // Insert the capsule at the current position in the timeline,
-          // right after whatever text preceded it.
           h.state.segments.push({ kind: "tool", call })
+          persistDebounced()
+        } else if (ev.type === "tool_args_delta") {
+          // Args still streaming in — keep accumulating into
+          // the pending capsule's rawArgs so the popover can
+          // show the half-formed JSON if the user opens it.
+          const tc = h.state.toolCalls.find((t) => t.call_id === ev.call_id)
+          if (tc) {
+            tc.args = tc.args || {}
+            tc.args.__raw__ =
+              ((tc.args.__raw__ as string | undefined) ?? "") +
+              ev.arguments_chunk
+          }
+          persistDebounced()
+        } else if (ev.type === "tool_start") {
+          // Args complete — transition any pending capsule we
+          // created on tool_args_start into the executing state.
+          // Falls back to creating a fresh executing call if
+          // the provider never streamed the args (e.g.
+          // non-streaming models).
+          const existing = h.state.toolCalls.find((t) => t.call_id === ev.call_id)
+          if (existing) {
+            existing.name = ev.name
+            existing.kind = ev.kind
+            existing.args = ev.args
+            existing.status = "executing"
+          } else {
+            const call: ToolCallState = {
+              call_id: ev.call_id,
+              kind: ev.kind,
+              name: ev.name,
+              args: ev.args,
+              status: "executing",
+            }
+            h.state.toolCalls.push(call)
+            h.state.segments.push({ kind: "tool", call })
+          }
+          persistDebounced()
         } else if (ev.type === "tool_progress") {
           // Bundled / local tools yield one chunk today; we treat
           // each chunk as an append on a half-formed result string.

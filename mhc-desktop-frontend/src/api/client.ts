@@ -91,6 +91,11 @@ export interface Tool {
   model_name?: string
   enabled: boolean
   origin: "bundled" | "imported" | "local"
+  /** Localized display names keyed by language tag (e.g.
+   *  "en", "zh"). The LLM never sees these — they're for
+   *  the UI only. Falls back to ``name`` when the current
+   *  locale has no entry. */
+  display_name_i18n?: Record<string, string>
   source_path: string
   version: string
   license: string
@@ -296,6 +301,9 @@ export interface MCPServer {
   env: Record<string, string>
   enabled: boolean
   origin: "bundled" | "imported" | "local"
+  /** Localized display names keyed by language tag. UI-only;
+   *  the LLM never sees these. */
+  display_name_i18n?: Record<string, string>
   tools: MCPToolSchema[]
   last_connected_at: string
   last_error: string
@@ -947,6 +955,21 @@ export type StreamEvent =
       seq?: number
     }
   | {
+      type: "tool_args_start"
+      call_id: string
+      kind: "mcp" | "tool"
+      name: string
+      session_id?: string
+      seq?: number
+    }
+  | {
+      type: "tool_args_delta"
+      call_id: string
+      arguments_chunk: string
+      session_id?: string
+      seq?: number
+    }
+  | {
       type: "tool_start"
       call_id: string
       kind: "mcp" | "tool"
@@ -1037,6 +1060,25 @@ function parseSseEvent(block: string): StreamEvent | null {
     return {
       type: "reasoning",
       content: String(parsed.content ?? ""),
+      session_id,
+      seq,
+    }
+  }
+  if (event === "tool_args_start") {
+    return {
+      type: "tool_args_start",
+      call_id: String(parsed.call_id ?? ""),
+      kind: parsed.kind === "tool" ? "tool" : "mcp",
+      name: String(parsed.name ?? ""),
+      session_id,
+      seq,
+    }
+  }
+  if (event === "tool_args_delta") {
+    return {
+      type: "tool_args_delta",
+      call_id: String(parsed.call_id ?? ""),
+      arguments_chunk: String(parsed.arguments_chunk ?? ""),
       session_id,
       seq,
     }

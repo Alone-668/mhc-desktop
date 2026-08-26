@@ -810,6 +810,20 @@ export const dict = computed<Record<string, string>>(() =>
   locale.value === "zh" ? zh : en,
 )
 
+/** Resolve a localised display name from an item carrying a
+ *  ``display_name_i18n: Record<string, string>`` field. Falls
+ *  back through current locale → English → ``fallback`` so
+ *  an item that ships only an English display name still
+ *  renders correctly in a Chinese UI. */
+export function pickI18n(
+  item: { display_name_i18n?: Record<string, string> } | null | undefined,
+  fallback: string,
+): string {
+  const m = item?.display_name_i18n
+  if (!m) return fallback
+  return m[locale.value] ?? m.en ?? fallback
+}
+
 /**
  * Look up a translation by key. Falls back to the key itself when missing,
  * which keeps templates readable while exposing typos as visible strings

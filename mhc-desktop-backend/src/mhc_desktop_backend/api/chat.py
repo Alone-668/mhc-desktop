@@ -477,6 +477,17 @@ async def _event_stream(
     """
     seq = 0
 
+    # Per-turn tool-call accumulator. The model streams
+    # tool_calls as a series of partial fragments (id, name,
+    # arguments) keyed by an `index`. We allocate our own
+    # call_id as soon as we see the first delta with a fresh
+    # id, accumulate name/args, and reuse the same call_id
+    # when the existing tool execution loop emits
+    # ``execution_start`` / ``tool_start`` so the frontend
+    # can transition its pending capsule seamlessly into an
+    # executing one. Cleared each tool round.
+    pending_calls: dict[int, dict[str, str]] = {}
+
     def _emit(event: str, data: dict[str, Any]) -> str:
         nonlocal seq
         seq += 1
@@ -484,12 +495,11 @@ async def _event_stream(
         return _sse(event, payload)
 
     async def _emit_delta(chunk: Any):
-        """Emit one LLM delta as reasoning + content events.
+        """Emit one LLM delta as reasoning + content + tool-arg events.
 
-        Providers (DeepSeek R1 / Qwen-R1 style) stream
-        ``reasoning_content`` deltas BEFORE content deltas, so
-        emitting reasoning first keeps the UI timeline
-        chronological: thinking block, then reply text.
+        Reasoning fires first so the UI timeline stays
+        chronological (thinking block, then reply text, then
+        any tool capsules for the args that follow).
         """
         reasoning = getattr(chunk, "reasoning", None)
         if reasoning:
@@ -497,6 +507,56 @@ async def _event_stream(
         content = getattr(chunk, "content", None)
         if content:
             yield _emit("chunk", {"content": content})
+        # Tool-call streaming: surface the accumulation as
+        # ``tool_args_start`` / ``tool_args_delta`` so the UI
+        # can show a pending capsule while the model is still
+        # generating the function arguments.
+        deltas = getattr(chunk, "tool_calls", None)
+        if deltas:
+            for tc in deltas:
+                idx = getattr(tc, "index", None)
+                if idx is None:
+                    continue
+                pending = pending_calls.get(idx)
+                if pending is None and getattr(tc, "id", None):
+                    # First delta for a brand-new tool call.
+                    pending = {
+                        "call_id": "call_" + uuid.uuid4().hex[:12],
+                        "name": "",
+                        "arguments": "",
+                    }
+                    pending_calls[idx] = pending
+                    # ``name`` may arrive a chunk later; fall
+                    # back to a placeholder so the UI can label
+                    # the capsule immediately.
+                    name_now = getattr(tc.function, "name", None) or ""
+                    if name_now:
+                        pending["name"] = name_now
+                    yield _emit(
+                        "tool_args_start",
+                        {
+                            "call_id": pending["call_id"],
+                            "kind": "mcp" if "::" in pending["name"] else "tool",
+                            "name": pending["name"],
+                        },
+                    )
+                if pending is None:
+                    continue
+                fn = getattr(tc, "function", None)
+                if fn is not None:
+                    name_chunk = getattr(fn, "name", None) or ""
+                    args_chunk = getattr(fn, "arguments", None) or ""
+                    if name_chunk and name_chunk != pending["name"]:
+                        pending["name"] = name_chunk
+                    if args_chunk:
+                        pending["arguments"] += args_chunk
+                        yield _emit(
+                            "tool_args_delta",
+                            {
+                                "call_id": pending["call_id"],
+                                "arguments_chunk": args_chunk,
+                            },
+                        )
 
     provider = await store.get(provider_name)
     if provider is None:
@@ -718,18 +778,28 @@ async def _event_stream(
         tool_messages: list[Message] = []
         assistant_text = (final_response.content or "") if final_response else ""
 
-        # Pre-compute the call ids so the ExecutionStart event can
-        # carry the same set the UI will see in tool_start.
+        # Reuse the call_ids we already announced via
+        # ``tool_args_start`` while the model streamed the args
+        # (keyed by streaming ``index``). The streaming protocol
+        # guarantees the order is stable so positional zip is
+        # safe — if we never saw deltas for a given index (e.g.
+        # non-streaming provider) fall back to a fresh id.
         call_ids: list[str] = []
         call_names: list[str] = []
         call_kinds: list[str] = []
-        for tc in tool_calls:
-            cid = f"call_{uuid.uuid4().hex[:12]}"
+        for idx, tc in enumerate(tool_calls):
+            pending = pending_calls.get(idx)
             name = tc["function"]["name"]
             kind = "mcp" if "::" in name else "tool"
+            if pending is not None and pending.get("name") == name:
+                cid = pending["call_id"]
+            else:
+                cid = f"call_{uuid.uuid4().hex[:12]}"
             call_ids.append(cid)
             call_names.append(name)
             call_kinds.append(kind)
+        # Reset so the next turn starts fresh.
+        pending_calls.clear()
         yield _emit(
             "execution_start",
             {

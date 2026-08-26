@@ -17,8 +17,16 @@
         "description": "The replacement text. Empty string deletes the matched text."
       }
     },
-    "required": ["path", "old_string", "new_string"]
+    "required": [
+      "path",
+      "old_string",
+      "new_string"
+    ]
   },
   "version": "0.1.0",
-  "license": "MIT"
+  "license": "MIT",
+  "display_name_i18n": {
+    "en": "Edit File",
+    "zh": "编辑文件"
+  }
 }

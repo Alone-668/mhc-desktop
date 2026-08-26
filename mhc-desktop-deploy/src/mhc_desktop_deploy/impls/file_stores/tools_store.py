@@ -100,6 +100,7 @@ class ToolStore:
             source_path=entry.get("source_path", ""),
             version=entry.get("version", ""),
             license=entry.get("license", ""),
+            display_name_i18n=dict(entry.get("display_name_i18n") or {}),
             created_at=entry.get("created_at", ""),
             updated_at=entry.get("updated_at", ""),
         )
@@ -186,6 +187,7 @@ class ToolStore:
             source_path=data.get("source_path", ""),
             version=data.get("version", ""),
             license=data.get("license", ""),
+            display_name_i18n=dict(data.get("display_name_i18n") or {}),
             created_at=now,
             updated_at=now,
         )
@@ -212,6 +214,7 @@ class ToolStore:
             "version",
             "license",
             "origin",
+            "display_name_i18n",
         ):
             if key in data:
                 entry[key] = data[key]

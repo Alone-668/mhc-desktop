@@ -236,6 +236,26 @@ async def bulk_install_tools(
             continue
         existing = await store.get(slug)
         if existing is not None and not overwrite:
+            # Existing install: leave user customisations alone,
+            # but seed any kernel-owned fields the manifest now
+            # carries that the stored entry doesn't (today:
+            # ``display_name_i18n``). Cheap diff-update so adding
+            # a new localised name doesn't require a wipe.
+            manifest_path_existing = child / "manifest.json"
+            if manifest_path_existing.is_file():
+                try:
+                    ex_meta = json.loads(manifest_path_existing.read_text("utf-8"))
+                except json.JSONDecodeError:
+                    ex_meta = {}
+                i18n_seed = ex_meta.get("display_name_i18n") or {}
+                if i18n_seed and not getattr(existing, "display_name_i18n", {}):
+                    try:
+                        await store.update(slug, {"display_name_i18n": dict(i18n_seed)})
+                    except Exception as e:  # noqa: BLE001
+                        summary["errors"].append({
+                            "path": str(child),
+                            "error": f"failed to seed i18n: {e}",
+                        })
             summary["skipped"].append(
                 {"path": str(child), "reason": f"tool '{slug}' already exists"}
             )
@@ -276,6 +296,7 @@ async def bulk_install_tools(
             "version": meta.get("version", ""),
             "license": meta.get("license", ""),
             "enabled": True,
+            "display_name_i18n": meta.get("display_name_i18n", {}) or {},
         }
         try:
             if existing is not None and overwrite:

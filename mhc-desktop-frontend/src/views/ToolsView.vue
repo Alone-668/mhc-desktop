@@ -12,7 +12,7 @@ import { api, type Tool } from "../api/client"
 import { useToolsStore } from "../stores/tools"
 import Icon from "../components/Icon.vue"
 import { ask } from "../lib/confirm"
-import { t } from "../i18n"
+import { t, pickI18n } from "../i18n"
 
 const store = useToolsStore()
 
@@ -263,7 +263,7 @@ async function saveEdit() {
           <div class="row">
             <div class="grow">
               <div class="title">
-                {{ s.name }}
+                {{ pickI18n(s, s.name) }}
                 <span class="origin-badge" :class="`kind-${s.kind}`">
                   {{ t(`tools.kind.${s.kind}`) }}
                 </span>

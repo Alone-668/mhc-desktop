@@ -106,6 +106,12 @@ async def upsert_mcp(
     env = body.get("env") or {}
     slug = (body.get("slug") or "").strip()
     origin = (body.get("origin") or "imported").strip() or "imported"
+    # Optional localized display names; ignored on the wire if
+    # not a dict of strings so a stray client can't crash us.
+    raw_i18n = body.get("display_name_i18n")
+    display_name_i18n: dict[str, str] | None = None
+    if isinstance(raw_i18n, dict):
+        display_name_i18n = {str(k): str(v) for k, v in raw_i18n.items() if isinstance(k, str) and isinstance(v, str)}
     if not command:
         raise HTTPException(status_code=400, detail="command is required")
     if not isinstance(args, list):
@@ -125,6 +131,7 @@ async def upsert_mcp(
             args=[str(a) for a in args],
             env={str(k): str(v) for k, v in env.items()},
             origin=origin,
+            display_name_i18n=display_name_i18n,
         )
     except MCPError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None

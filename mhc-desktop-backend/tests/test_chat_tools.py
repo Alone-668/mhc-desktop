@@ -678,3 +678,162 @@ async def test_chat_preserves_cancelled_tool_context(tmp_path: Path):
     # Current-turn tools are still being passed to the LLM.
     assert provider.tools_seen[0] != []
 
+
+
+def test_tool_args_streaming_emits_args_start_then_start():
+    """Model streams a tool call across multiple chunks:
+    chunk 1 → id + first letters of args
+    chunk 2 → more letters of args
+    chunk 3 → final args
+    
+    We expect:
+    - ``tool_args_start`` event carries our pre-allocated call_id
+    - ``tool_args_delta`` events carry the partial arg fragments
+    - ``tool_start`` reuses the SAME call_id (the UI's pending
+      capsule transitions seamlessly into the executing one)
+    - ``tool_end`` fires once with success
+    """
+    from dataclasses import dataclass, field
+
+    # Stub provider that yields a stream of tool_call deltas.
+    @dataclass
+    class _ToolCallDelta:
+        index: int = 0
+        id: str | None = None
+        function: Any = None
+
+    @dataclass
+    class _ToolCallFunction:
+        name: str | None = None
+        arguments: str | None = None
+
+    @dataclass
+    class _StreamChunk:
+        content: str | None = None
+        reasoning: str | None = None
+        tool_calls: list | None = None
+
+    full_args = '{"command":"ls /tmp","timeout":60}'
+
+    class _StreamingStream:
+        def __init__(self):
+            self._chunks = [
+                _StreamChunk(
+                    tool_calls=[
+                        _ToolCallDelta(
+                            index=0,
+                            id="call_provider_123",
+                            function=_ToolCallFunction(name="cmd"),
+                        ),
+                    ]
+                ),
+                _StreamChunk(
+                    tool_calls=[
+                        _ToolCallDelta(
+                            index=0,
+                            function=_ToolCallFunction(arguments='{"command":'),
+                        ),
+                    ]
+                ),
+                _StreamChunk(
+                    tool_calls=[
+                        _ToolCallDelta(
+                            index=0,
+                            function=_ToolCallFunction(arguments='"ls /tmp","timeout":60}'),
+                        ),
+                    ]
+                ),
+            ]
+            self.response = _FakeResponse("cmd", {"command": "ls /tmp", "timeout": 60})
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self._chunks:
+                raise StopAsyncIteration
+            return self._chunks.pop(0)
+
+        async def aclose(self):
+            return None
+
+    class _StreamingProvider:
+        """First call streams a tool call; second call returns
+        plain text so the loop terminates cleanly."""
+        name = "stub"
+        provider_type = "openai"
+        calls = 0
+
+        async def chat(self, messages, tools=None):
+            self.__class__.calls += 1
+            if self.calls == 1:
+                return _StreamingStream()
+            return _FakeTextStream("ok")
+
+
+    # Use tmp_path fixture normally:
+    import tempfile
+    tmpdir = tempfile.mkdtemp()
+    tmp = Path(tmpdir)
+    app = _build_app(tmp, provider=_StreamingProvider())
+    try:
+        import asyncio as _aio
+        from httpx import ASGITransport, AsyncClient as _AC
+
+        async def run():
+            store = app.state.tool_store
+            await import_local_tool(
+                "cmd",
+                "async def tool_run(command, timeout):\n    return f'ran {command} for {timeout}s'\n",
+            )
+            await store.create({
+                "name": "cmd",
+                "slug": "cmd",
+                "model_name": "cmd",
+                "kind": "local",
+                "origin": "imported",
+                "description": "stub",
+                "parameters": {"type": "object", "properties": {}},
+                "source": "x",
+                "enabled": True,
+            })
+
+            transport = ASGITransport(app=app)
+            async with _AC(transport=transport, base_url="http://test") as client:
+                body = {
+                    "provider": "stub",
+                    "model": "gpt-x",
+                    "session_id": "s1",
+                    "messages": [{"role": "user", "content": "list /tmp"}],
+                }
+                r = await client.post("/api/v1/chat", json=body)
+                events = _parse_sse(r.text)
+                return events
+
+        events = _aio.run(run())
+    finally:
+        _restore_chat(app)
+
+    # The streaming provider emits tool_args_start, two deltas,
+    # then tool_start (which reuses our id), then tool_end.
+    args_start = [e for e in events if e["event"] == "tool_args_start"]
+    args_delta = [e for e in events if e["event"] == "tool_args_delta"]
+    tool_start = [e for e in events if e["event"] == "tool_start"]
+    tool_end = [e for e in events if e["event"] == "tool_end"]
+
+    summary = [e['event'] for e in events]
+    assert len(args_start) == 1, f'expected one tool_args_start, got {summary}'
+    assert len(args_delta) == 2, f'expected two tool_args_delta, got {summary}'
+    assert len(tool_start) == 1, f'expected one tool_start, got {summary}'
+    assert len(tool_end) == 1, f'expected one tool_end, got {summary}'
+
+    pending_id = args_start[0]['data']['call_id']
+    started_id = tool_start[0]['data']['call_id']
+    ended_id = tool_end[0]['data']['call_id']
+    assert pending_id == started_id == ended_id, (
+        f'call_id should round-trip: pending={pending_id} '
+        f'started={started_id} ended={ended_id}'
+    )
+
+    accumulated = ''.join(d['data']['arguments_chunk'] for d in args_delta)
+    assert accumulated == full_args, f'got {accumulated!r}, expected {full_args!r}'

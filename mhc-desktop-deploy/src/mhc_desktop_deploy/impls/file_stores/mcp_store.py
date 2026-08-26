@@ -88,6 +88,7 @@ class MCPStore:
         args: list[str],
         env: dict[str, str] | None = None,
         origin: str = "imported",
+        display_name_i18n: dict[str, str] | None = None,
     ) -> MCPServer:
         """Create or update an MCP server spec."""
         if not command.strip():
@@ -118,6 +119,7 @@ class MCPStore:
                     env=dict(env),
                     enabled=True,
                     origin=origin,
+                    display_name_i18n=dict(display_name_i18n or {}),
                     created_at=now,
                     updated_at=now,
                 )
@@ -125,6 +127,13 @@ class MCPStore:
                 # Merge: keep the existing tools / last_connected_at /
                 # last_error from the state file so a config edit doesn't
                 # blow away runtime discovery state.
+                # Display-name locales: caller-supplied wins when
+                # provided, otherwise preserve the existing entry.
+                i18n = (
+                    dict(display_name_i18n)
+                    if display_name_i18n is not None
+                    else dict(existing.display_name_i18n)
+                )
                 server = MCPServer(
                     id=existing.id or str(uuid.uuid4()),
                     slug=existing.slug,
@@ -135,6 +144,7 @@ class MCPStore:
                     env=dict(env),
                     enabled=existing.enabled,
                     origin=existing.origin,
+                    display_name_i18n=i18n,
                     tools=list(existing.tools),
                     last_connected_at=existing.last_connected_at,
                     last_error=existing.last_error,
@@ -224,6 +234,7 @@ class MCPStore:
             enabled=bool(entry.get("enabled", data.get("enabled", True))),
             origin=entry.get("origin", data.get("origin", "imported")),
             source_path=entry.get("source_path", ""),
+            display_name_i18n=dict(data.get("display_name_i18n") or {}),
             tools=list(data.get("tools") or []),
             last_connected_at=entry.get(
                 "last_connected_at", data.get("last_connected_at", "")

@@ -46,6 +46,9 @@ class MCPServer:
     enabled: bool = True
     origin: str = "imported"  # "imported" | "local"
     source_path: str = ""
+    # Localized display names keyed by language tag. UI-only,
+    # never seen by the LLM. Empty dict falls back to ``name``.
+    display_name_i18n: dict[str, str] = field(default_factory=dict)
     tools: list[dict[str, Any]] = field(default_factory=list)
     last_connected_at: str = ""
     last_error: str = ""

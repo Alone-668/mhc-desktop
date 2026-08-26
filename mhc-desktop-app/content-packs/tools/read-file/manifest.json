@@ -21,8 +21,14 @@
         "description": "Maximum number of lines to return (default 2000). Set to 0 for no limit (large files consume many tokens)."
       }
     },
-    "required": ["path"]
+    "required": [
+      "path"
+    ]
   },
   "version": "0.1.0",
-  "license": "MIT"
+  "license": "MIT",
+  "display_name_i18n": {
+    "en": "Read File",
+    "zh": "读取文件"
+  }
 }
