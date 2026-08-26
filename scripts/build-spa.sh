@@ -5,8 +5,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-FRONT_DIR="$ROOT/packages/mhc-desktop-frontend"
-BACKEND_DIR="$ROOT/packages/mhc-desktop-backend"
+FRONT_DIR="$ROOT/mhc-desktop-frontend"
+BACKEND_DIR="$ROOT/mhc-desktop-backend"
 STATIC_DIR="$BACKEND_DIR/src/mhc_desktop_backend/static"
 
 echo "[build-spa] vite build"

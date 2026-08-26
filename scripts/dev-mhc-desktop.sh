@@ -61,12 +61,12 @@ wait_for "http://127.0.0.1:$BACKEND_PORT/ready" "Backend (:$BACKEND_PORT)" || {
 }
 
 echo "[mhc-dev] Installing frontend deps (if needed) ..."
-if [ ! -d "$ROOT/packages/mhc-desktop-frontend/node_modules" ]; then
-  (cd "$ROOT/packages/mhc-desktop-frontend" && npm install --cache "$ROOT/.npm-cache")
+if [ ! -d "$ROOT/mhc-desktop-frontend/node_modules" ]; then
+  (cd "$ROOT/mhc-desktop-frontend" && npm install --cache "$ROOT/.npm-cache")
 fi
 
 echo "[mhc-dev] Starting frontend on :$FRONTEND_PORT ..."
-(cd "$ROOT/packages/mhc-desktop-frontend" && npm run dev) > "$LOG_DIR/mhc-desktop-frontend.log" 2>&1 &
+(cd "$ROOT/mhc-desktop-frontend" && npm run dev) > "$LOG_DIR/mhc-desktop-frontend.log" 2>&1 &
 FRONTEND_PID=$!
 pids+=("$FRONTEND_PID")
 

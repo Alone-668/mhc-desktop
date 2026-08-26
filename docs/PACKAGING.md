@@ -94,7 +94,18 @@ ERROR: Cannot create symbolic link : 客户端没有所需权限 :
   - Windows 构建只用 `rcedit-{x64,ia32}.exe`，darwin/ 和 linux/ 完全可以不要。
   - 解压后核对 `rcedit-x64.exe` 存在（1.3MB）才算成功 —— 之前 7za-wrapper 的失败版本看似 OK 但目录是空的，**一定要 verify**。
 
-### 2.4 `pyright` / `tsc` 不受影响
+### 2.4 PBS（CPython 发行版）下载
+
+直接 `curl https://github.com/astral-sh/python-build-standalone/releases/...`
+在国内超时是常态。`scripts/build-bundled-python.{sh,ps1}` 现在按顺序试：
+
+1. `https://registry.npmmirror.com/-/binary/python-build-standalone/{VER}/{TGZ}`
+2. `https://github.com/...` （官方源）
+3. `https://gh-proxy.com/https://github.com/...` （HTTP GitHub 代理）
+
+如果都失败才会报错。国内基本第 1 条就返回 200，~30 MB、~10s。
+
+### 2.5 `pyright` / `tsc` 不受影响
 
 它们走 npm 的镜像，跟 Electron 二进制无关 —— `~/.npmrc` 里 `registry=https://registry.npmmirror.com` 已有。
 

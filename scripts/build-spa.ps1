@@ -3,8 +3,8 @@
 $ErrorActionPreference = "Stop"
 
 $ROOT       = (Resolve-Path "$PSScriptRoot/..").Path
-$FRONT_DIR  = Join-Path $ROOT "packages/mhc-desktop-frontend"
-$BACKEND_DIR= Join-Path $ROOT "packages/mhc-desktop-backend"
+$FRONT_DIR  = Join-Path $ROOT "mhc-desktop-frontend"
+$BACKEND_DIR= Join-Path $ROOT "mhc-desktop-backend"
 $STATIC_DIR = Join-Path $BACKEND_DIR "src/mhc_desktop_backend/static"
 
 Write-Host "[build-spa] vite build"
