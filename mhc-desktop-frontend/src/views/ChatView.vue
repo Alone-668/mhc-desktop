@@ -1478,11 +1478,11 @@ function groupTimelineSegments(
   border-top-right-radius: 4px;
   padding: 10px 14px;
   border: 1px solid var(--border);
-  font-size: 14px;
+  font-size: var(--app-font-size, 14px);
   line-height: 1.6;
 }
 .msg.assistant .content {
-  font-size: 14px;
+  font-size: var(--app-font-size, 14px);
   line-height: 1.6;
   padding: 6px 0;
 }
@@ -1762,7 +1762,7 @@ function groupTimelineSegments(
   outline: 0;
   resize: none;
   font: inherit;
-  font-size: 15px;
+  font-size: var(--app-font-size, 14px);
   line-height: 1.6;
   padding: 16px 20px 10px;
   background: transparent;
@@ -2203,7 +2203,7 @@ function groupTimelineSegments(
 .composer-wrap.expanded .composer-input {
   flex: 1;
   width: 100%;
-  font-size: 17px;
+  font-size: var(--app-font-size, 14px);
   line-height: 1.7;
   padding: 24px 28px;
   max-height: none;

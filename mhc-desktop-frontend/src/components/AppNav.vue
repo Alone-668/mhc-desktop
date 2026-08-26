@@ -269,7 +269,7 @@ const enabledTools = computed(() => tools.enabledTools)
   border-radius: 6px;
   color: var(--text-mid);
   text-decoration: none;
-  font-size: 13.5px;
+  font-size: var(--app-font-size, 14px);
   border: 1px solid transparent;
   transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }

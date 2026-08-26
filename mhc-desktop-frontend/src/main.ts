@@ -3,6 +3,7 @@ import { createPinia } from "pinia"
 import App from "./App.vue"
 import { router } from "./router"
 import { useThemeStore } from "./stores/theme"
+import { useAppearanceStore } from "./stores/appearance"
 import { useAppMetaStore } from "./stores/appMeta"
 import { useSessionStreamsStore } from "./stores/sessionStreams"
 import { locale, setLocale } from "./i18n"
@@ -16,6 +17,8 @@ app.use(router)
 // Sync Vue-side theme state with what index.html set on <html>.
 const theme = useThemeStore()
 theme.init()
+const appearance = useAppearanceStore()
+appearance.init()
 const appMeta = useAppMetaStore()
 appMeta.init()
 

@@ -229,7 +229,7 @@ h2 {
 }
 .title {
   font-weight: 600;
-  font-size: 15px;
+  font-size: var(--app-font-size, 15px);
   display: flex;
   align-items: center;
   gap: 6px;

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue"
 import { useThemeStore } from "../stores/theme"
+import { useAppearanceStore } from "../stores/appearance"
 import { useOnboardingStore } from "../stores/onboarding"
 import { useAppMetaStore } from "../stores/appMeta"
 import { usePrefsStore } from "../stores/prefs"
@@ -8,6 +9,7 @@ import { useUpdateStore } from "../stores/update"
 import { locale, setLocale, t, type Locale } from "../i18n"
 
 const theme = useThemeStore()
+const appearance = useAppearanceStore()
 const onboarding = useOnboardingStore()
 const appMeta = useAppMetaStore()
 const prefs = usePrefsStore()
@@ -162,6 +164,30 @@ async function replayTour() {
             :aria-label="t('settings.appTitle')"
             @input="titleDraft = ($event.target as HTMLInputElement).value"
           />
+        </div>
+
+        <div class="row">
+          <div class="row-text">
+            <div class="row-title">{{ t("settings.fontSize") }}</div>
+            <div class="row-desc">{{ t("settings.fontSizeDesc") }}</div>
+          </div>
+          <div class="font-size-control">
+            <input
+              class="font-size-range"
+              type="range"
+              :min="appearance.min"
+              :max="appearance.max"
+              step="1"
+              :value="appearance.fontSize"
+              :aria-label="t('settings.fontSize')"
+              @input="
+                appearance.setFontSize(
+                  Number(($event.target as HTMLInputElement).value),
+                )
+              "
+            />
+            <span class="font-size-value">{{ appearance.fontSize }}px</span>
+          </div>
         </div>
       </section>
 
@@ -327,13 +353,13 @@ async function replayTour() {
   min-width: 0;
 }
 .row-title {
-  font-size: 14px;
+  font-size: var(--app-font-size, 14px);
   font-weight: 500;
   color: var(--text);
 }
 .row-desc {
   margin-top: 4px;
-  font-size: 12.5px;
+  font-size: var(--app-font-size, 14px);
   color: var(--text-mid);
   line-height: 1.5;
 }
@@ -390,7 +416,7 @@ async function replayTour() {
 }
 .prompt-input {
   font: inherit;
-  font-size: 13px;
+  font-size: var(--app-font-size, 14px);
   color: var(--text);
   background: var(--bg);
   border: 1px solid var(--border);
@@ -439,5 +465,24 @@ async function replayTour() {
 }
 .seg-opt-primary:hover:not(:disabled) {
   background: var(--accent-soft);
+}
+
+.font-size-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.font-size-range {
+  width: 180px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+.font-size-value {
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+  color: var(--text-mid);
+  min-width: 36px;
+  text-align: right;
 }
 </style>

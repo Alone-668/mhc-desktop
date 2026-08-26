@@ -538,7 +538,7 @@ async function saveEdit() {
 }
 .title {
   font-weight: 600;
-  font-size: 14.5px;
+  font-size: var(--app-font-size, 14.5px);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -558,7 +558,7 @@ async function saveEdit() {
   padding: 1px 6px;
 }
 .desc {
-  font-size: 13px;
+  font-size: var(--app-font-size, 14px);
   color: var(--text-mid);
   margin-top: 4px;
   line-height: 1.5;
@@ -743,7 +743,7 @@ async function saveEdit() {
   border-radius: 6px;
   padding: 8px 10px;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--app-font-size, 14px);
   resize: vertical;
   background: var(--bg);
   color: var(--text);

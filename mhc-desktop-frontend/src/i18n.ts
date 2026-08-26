@@ -250,6 +250,9 @@ const en: Record<string, string> = {
   "settings.appTitle": "App title",
   "settings.appTitleDesc":
     "Name shown in the title bar (English renders in caps) and the sidebar top. Each user can rename the app.",
+  "settings.fontSize": "Font size",
+  "settings.fontSizeDesc":
+    "Adjusts body text across the app, including chat messages and the input box.",
 
   "settings.aiBehavior": "AI behavior",
   "settings.systemPromptAddition": "System prompt addition",
@@ -651,6 +654,9 @@ const zh: Record<string, string> = {
   "settings.appTitle": "应用名称",
   "settings.appTitleDesc":
     "在标题栏（英文会显示为大写）和侧边栏顶部展示的名字。每个用户可以各自重命名本应用。",
+  "settings.fontSize": "字体大小",
+  "settings.fontSizeDesc":
+    "调整全应用的正文字号，包括对话消息和输入框。",
   "settings.aiBehavior": "AI 行为",
   "settings.systemPromptAddition": "系统提示词",
   "settings.systemPromptAdditionDesc":

@@ -97,6 +97,12 @@
   --incremark-typography-font-family-mono: var(--font-mono);
   --incremark-typography-line-height-normal: 1.6;
 
+  /* User-adjustable body text size. Default 14px matches the rest of
+   * the design system. The Settings → Appearance slider overrides
+   * this with an inline style on <html>; the var fallback only
+   * shows up if the slider store hasn't init'd yet. */
+  --app-font-size: 14px;
+
   color-scheme: light;
 }
 
