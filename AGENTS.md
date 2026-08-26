@@ -11,7 +11,7 @@ Self-hosted Skill/MCP agent client: Electron host + Vue SPA + FastAPI backend.
 | `mhc-desktop-frontend/` | Vue 3 + Vite SPA (Pinia, vue-router). |
 | `mhc-desktop-app/` | Electron host — spawns bundled Python, serves SPA from same origin. |
 | `scripts/` | `dev-*.sh`, `build-spa.sh`, `build-bundled-python.sh`. |
-| `docs/` | `PACKAGING.md`, `BUILTIN-CONTENT.md`. Read these before changing build or bundled content. |
+| `docs/` | `PACKAGING.md`, `BUILTIN-CONTENT.md`, `UPDATE-MECHANISM.md`. Read these before changing build, bundled content, or update flow. |
 | `e2e/smoke.cjs` | 17-check post-refactor HTTP smoke. No screenshots. |
 
 ## Dev loop
@@ -36,6 +36,11 @@ Demo users (no IdP needed): `alice/wonderland`, `bob/builder`, `demo/demo`.
 pytest                                  # all backend tests
 ruff check .                            # lint
 pyright                                 # type-check (kernel + deploy)
+
+# Updater (Electron app)
+cd mhc-desktop-app
+npm test                                # 43 unit tests across manifest/downloader/applier/rollout
+npm run test:scenarios                  # 14-scenario integration suite (local HTTP server + fake packaged layout)
 
 # Frontend
 cd mhc-desktop-frontend
@@ -71,3 +76,4 @@ cd mhc-desktop-app && npm run package  # → dist/mhc-desktop Setup *.exe (NSIS)
 - Adding enterprise auth / storage / RBAC / presets → `mhc-desktop-deploy/README.md`.
 - Adding bundled Skill / Tool / MCP → `docs/BUILTIN-CONTENT.md`.
 - Packaging / installer issues → `docs/PACKAGING.md`.
+- Auto-update flow / manifest / Tier 1–3 channels → `docs/UPDATE-MECHANISM.md`.

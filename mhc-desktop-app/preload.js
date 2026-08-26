@@ -56,5 +56,20 @@ electron_1.contextBridge.exposeInMainWorld("mhc", {
             return "";
         }
     },
+    // Updater — surface backend orchestrator state to the renderer.
+    // Main owns the state; the renderer reads it on demand and listens
+    // for the ``update:state`` push channel.
+    update: {
+        getStatus: () => electron_1.ipcRenderer.invoke("update:get-status"),
+        checkNow: () => electron_1.ipcRenderer.invoke("update:check-now"),
+        install: () => electron_1.ipcRenderer.invoke("update:install"),
+        applyNow: () => electron_1.ipcRenderer.invoke("update:apply-now"),
+        rollback: () => electron_1.ipcRenderer.invoke("update:rollback"),
+        onState: (cb) => {
+            const handler = (_e, s) => cb(s);
+            electron_1.ipcRenderer.on("update:state", handler);
+            return () => electron_1.ipcRenderer.removeListener("update:state", handler);
+        },
+    },
 });
 //# sourceMappingURL=preload.js.map

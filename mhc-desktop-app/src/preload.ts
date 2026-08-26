@@ -7,6 +7,11 @@
  */
 
 import { contextBridge, ipcRenderer, webUtils } from "electron"
+import type { UpdateInfo } from "./updater/rollout"
+
+/** UpdateStatus is what the renderer sees across IPC — same shape as
+ *  UpdateInfo minus the internal ``forceTier1`` flag. */
+type UpdateStatus = Omit<UpdateInfo, "forceTier1">
 
 contextBridge.exposeInMainWorld("mhc", {
   versions: {
@@ -61,5 +66,21 @@ contextBridge.exposeInMainWorld("mhc", {
     } catch {
       return ""
     }
+  },
+
+  // Updater — surface backend orchestrator state to the renderer.
+  // Main owns the state; the renderer reads it on demand and listens
+  // for the ``update:state`` push channel.
+  update: {
+    getStatus: () => ipcRenderer.invoke("update:get-status") as Promise<UpdateStatus>,
+    checkNow: () => ipcRenderer.invoke("update:check-now") as Promise<UpdateStatus>,
+    install: () => ipcRenderer.invoke("update:install") as Promise<UpdateStatus>,
+    applyNow: () => ipcRenderer.invoke("update:apply-now") as Promise<UpdateStatus>,
+    rollback: () => ipcRenderer.invoke("update:rollback") as Promise<{ rolled: string[] }>,
+    onState: (cb: (s: UpdateStatus) => void) => {
+      const handler = (_e: unknown, s: UpdateStatus) => cb(s)
+      ipcRenderer.on("update:state", handler)
+      return () => ipcRenderer.removeListener("update:state", handler)
+    },
   },
 })

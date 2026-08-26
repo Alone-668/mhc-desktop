@@ -228,6 +228,22 @@ const en: Record<string, string> = {
   "settings.about": "About",
   "settings.aboutDesc":
     "Self-contained Electron client for talking to LLM agents via your own provider keys. Independent of mh-gateway and mh-local.",
+
+  "settings.updates": "Updates",
+  "settings.updateStatus": "Update status",
+  "settings.updateIdle": "Up to date",
+  "settings.updateChecking": "Checking…",
+  "settings.updateAvailable": "Update available",
+  "settings.updateDownloading": "Downloading…",
+  "settings.updateFailed": "Update failed",
+  "settings.updateStaged": "Ready to install on next restart",
+  "settings.updateApplying": "Installing…",
+  "settings.updateCommitted": "Installed successfully",
+  "settings.updateRolledBack": "Rolled back to previous version",
+  "settings.updateCheck": "Check now",
+  "settings.updateInstall": "Download",
+  "settings.updateApply": "Restart to install",
+
   "settings.tour": "Show welcome tour",
   "settings.tourDesc":
     "Replay the first-run guide with skills and MCP walkthroughs.",
@@ -615,6 +631,22 @@ const zh: Record<string, string> = {
   "settings.about": "关于",
   "settings.aboutDesc":
     "独立的 Electron 客户端，通过您自己的服务商密钥与 LLM Agent 对话。独立于 mh-gateway 和 mh-local。",
+
+  "settings.updates": "更新",
+  "settings.updateStatus": "更新状态",
+  "settings.updateIdle": "已是最新",
+  "settings.updateChecking": "检查中…",
+  "settings.updateAvailable": "有新版本可用",
+  "settings.updateDownloading": "下载中…",
+  "settings.updateFailed": "更新失败",
+  "settings.updateStaged": "已下载，下次启动时自动安装",
+  "settings.updateApplying": "安装中…",
+  "settings.updateCommitted": "安装成功",
+  "settings.updateRolledBack": "已回滚到上一版本",
+  "settings.updateCheck": "立即检查",
+  "settings.updateInstall": "下载更新",
+  "settings.updateApply": "重启安装",
+
   "settings.tour": "再次显示欢迎指引",
   "settings.appTitle": "应用名称",
   "settings.appTitleDesc":

@@ -1,5 +1,17 @@
 /// <reference types="vite/client" />
 
+/** Wire shape for the renderer-side update API. Mirrors the preload
+ *  bridge in mhc-desktop-app/src/preload.ts. */
+interface UpdateStatusShape {
+  state: string
+  releasedAt?: string
+  available?: { spa?: string; content_packs?: string; backend?: string }
+  error?: string
+  progressBytes?: number
+  progressTotal?: number
+  channel?: string
+}
+
 declare module "*.vue" {
   import type { DefineComponent } from "vue"
   const component: DefineComponent<Record<string, unknown>, Record<string, unknown>, unknown>
@@ -23,6 +35,14 @@ declare global {
         filters?: { name: string; extensions: string[] }[]
       }) => Promise<{ path: string; name: string } | null>
       readFile: (p: string) => Promise<ArrayBuffer | null>
+      update?: {
+        getStatus: () => Promise<UpdateStatusShape>
+        checkNow: () => Promise<UpdateStatusShape>
+        install: () => Promise<UpdateStatusShape>
+        applyNow: () => Promise<UpdateStatusShape>
+        rollback: () => Promise<{ rolled: string[] }>
+        onState: (cb: (s: UpdateStatusShape) => void) => () => void
+      }
     }
   }
 }

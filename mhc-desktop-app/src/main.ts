@@ -21,6 +21,7 @@
 
 import { spawn, ChildProcess } from "node:child_process"
 import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, shell } from "electron"
+import { wireUpdater } from "./updater/electron-integration"
 import { promises as fsp } from "node:fs"
 import net from "node:net"
 import os from "node:os"
@@ -368,6 +369,11 @@ async function waitFor(url: string, timeoutMs: number): Promise<void> {
   throw new Error(`timeout waiting for ${url}`)
 }
 
+/** Promise that resolves when the backend first responds to /ready,
+ *  or rejects if the child dies or the timeout elapses. Both the
+ *  renderer splash poller and the updater commit path await this. */
+let backendReadyPromise: Promise<void> | null = null
+
 async function watchBackendReady(): Promise<void> {
   // Polls /ready for up to READY_BACKGROUND_TIMEOUT_MS. Once the
   // backend responds we tell the renderer to reload — the SPA will
@@ -513,6 +519,12 @@ async function bootstrap() {
   const isDevMode = isDev()
   let injectedHtmlPath: string | null = null
 
+  // The updater bootstraps BEFORE the window paints so a freshly
+  // applied Tier 2/3 is what the user sees on launch. We need to know
+  // whether ``resourcesPath`` exists (packaged mode); in dev there's
+  // no ``extraResources/`` so the updater is a no-op.
+  const updaterEnabled = app.isPackaged && !isDevMode
+
   // Resolve the backend port NOW so the injected config script can
   // carry it. We pick the port before spawning so two consecutive
   // launches don't race for the same number.
@@ -522,9 +534,12 @@ async function bootstrap() {
     // Watch /ready in the background. The SPA is already painting
     // the loading splash; once /health answers, the renderer
     // transitions out of the splash on its own.
-    void watchBackendReady().catch((err) =>
-      console.error("[electron] background ready watcher failed:", err),
-    )
+    // The promise is awaited by both the renderer splash logic and
+    // the updater commit path; track it once and reuse.
+    backendReadyPromise = watchBackendReady().catch((err) => {
+      console.error("[electron] background ready watcher failed:", err)
+      throw err
+    })
 
     // Stage a temp index.html with the backend URL injected so the
     // SPA's fetch() calls hit the right port. Done once at boot —
@@ -691,6 +706,17 @@ async function bootstrap() {
   // Build the tray early so closing the window to tray always works
   // even before the user has seen a single frame of the renderer.
   createTray()
+
+  // Updater phase 2: IPC + background loop. The window exists by now,
+  // so state transitions can reach the renderer.
+  if (updaterEnabled && mainWindow) {
+    void wireUpdater({
+      mainWindow,
+      enabled: true,
+      isReadyForCommit: () =>
+        backendReadyPromise ?? Promise.resolve(),
+    })
+  }
 
   if (isDevMode) {
     if (!mainWindow) return

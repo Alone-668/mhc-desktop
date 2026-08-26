@@ -1,17 +1,30 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue"
+import { computed, onMounted, onUnmounted, ref, watch } from "vue"
 import { useThemeStore } from "../stores/theme"
 import { useOnboardingStore } from "../stores/onboarding"
 import { useAppMetaStore } from "../stores/appMeta"
 import { usePrefsStore } from "../stores/prefs"
+import { useUpdateStore } from "../stores/update"
 import { locale, setLocale, t, type Locale } from "../i18n"
 
 const theme = useThemeStore()
 const onboarding = useOnboardingStore()
 const appMeta = useAppMetaStore()
 const prefs = usePrefsStore()
+const updateStore = useUpdateStore()
 const isDark = computed(() => theme.theme === "dark")
 const isZh = computed(() => locale.value === "zh")
+const updaterAvailable = computed(() => Boolean(window.mhc?.update))
+
+const stateLabel = computed(() => {
+  const k = `settings.update${updateStore.status.state.charAt(0).toUpperCase()}${updateStore.status.state.slice(1)}`
+  // i18n.t() returns the key itself if missing — fall back to raw state.
+  const label = t(k as any)
+  return label === k ? updateStore.status.state : label
+})
+
+const showInstall = computed(() => updateStore.status.state === "update_available")
+const showApply = computed(() => updateStore.status.state === "staged")
 
 // Local edit buffer so typing doesn't snap to defaults until the user
 // blurs / presses Enter; the store stays the source of truth on save.
@@ -31,6 +44,11 @@ const promptSavedAt = ref<string>("")
 onMounted(async () => {
   await prefs.load()
   promptDraft.value = prefs.systemPromptAddition
+  await updateStore.refresh()
+  // Subscribe is invoked many times during Settings navigation; keep
+  // the unsubscribe handle so we don't leak listeners across mounts.
+  const off = updateStore.subscribe()
+  onUnmounted(off)
 })
 
 async function savePromptAddition() {
@@ -183,6 +201,55 @@ async function replayTour() {
             <span v-else-if="promptSavedAt" class="prompt-saved">
               {{ t("settings.savedAt", { time: promptSavedAt }) }}
             </span>
+          </div>
+        </div>
+      </section>
+
+      <section v-if="updaterAvailable" class="group">
+        <h3>{{ t("settings.updates") }}</h3>
+        <div class="row">
+          <div class="row-text">
+            <div class="row-title">{{ t("settings.updateStatus") }}</div>
+            <div class="row-desc">
+              {{ stateLabel }}
+              <template v-if="updateStore.status.available">
+                · {{ Object.entries(updateStore.status.available).map(([k, v]) => `${k}=${v}`).join(", ") }}
+              </template>
+              <template v-if="updateStore.status.error">
+                · <span class="update-error">{{ updateStore.status.error }}</span>
+              </template>
+              <template v-if="updateStore.status.state === 'downloading' && updateStore.status.progressBytes && updateStore.status.progressTotal">
+                · {{ Math.round((updateStore.status.progressBytes / updateStore.status.progressTotal) * 100) }}%
+              </template>
+            </div>
+          </div>
+          <div class="update-actions">
+            <button
+              type="button"
+              class="seg-opt"
+              :disabled="updateStore.busy"
+              @click="updateStore.checkNow()"
+            >
+              {{ t("settings.updateCheck") }}
+            </button>
+            <button
+              v-if="showInstall"
+              type="button"
+              class="seg-opt seg-opt-primary"
+              :disabled="updateStore.busy"
+              @click="updateStore.install()"
+            >
+              {{ t("settings.updateInstall") }}
+            </button>
+            <button
+              v-if="showApply"
+              type="button"
+              class="seg-opt seg-opt-primary"
+              :disabled="updateStore.busy"
+              @click="updateStore.applyNow()"
+            >
+              {{ t("settings.updateApply") }}
+            </button>
           </div>
         </div>
       </section>
@@ -356,5 +423,21 @@ async function replayTour() {
 }
 .prompt-saved {
   color: var(--text-faint);
+}
+
+.update-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.update-error {
+  color: #d44;
+}
+.seg-opt-primary {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.seg-opt-primary:hover:not(:disabled) {
+  background: var(--accent-soft);
 }
 </style>
