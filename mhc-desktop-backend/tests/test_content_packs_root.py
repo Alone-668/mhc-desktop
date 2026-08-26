@@ -264,7 +264,9 @@ async def test_create_app_with_content_packs_root(tmp_path: Path):
 async def test_create_app_no_content_packs_root_no_op(tmp_path: Path):
     """Without a root and without ``MHC_RESOURCES_PATH`` in the
     environment, materialization is a no-op (the lifespan skips it
-    entirely)."""
+    entirely). Built-in tools (``load_skill``) still register via
+    ``ensure_builtin_tools`` — they're kernel-owned, not content
+    packs — so the assertion excludes them."""
     import os
 
     os.environ.pop("MHC_RESOURCES_PATH", None)
@@ -275,7 +277,13 @@ async def test_create_app_no_content_packs_root_no_op(tmp_path: Path):
     with TestClient(app):
         pass
     assert skills.installed == {}
-    assert tools.installed == {}
+    # Built-in ``load_skill`` always lands in the tool catalog on
+    # startup; the test's intent is "no content-pack tools got
+    # pulled from disk", so we exclude the built-in.
+    content_pack_tools = {
+        k: v for k, v in tools.installed.items() if k != "load_skill"
+    }
+    assert content_pack_tools == {}
     assert mcps.installed == {}
 
 

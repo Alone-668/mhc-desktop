@@ -211,6 +211,7 @@ class ToolStore:
             "enabled",
             "version",
             "license",
+            "origin",
         ):
             if key in data:
                 entry[key] = data[key]

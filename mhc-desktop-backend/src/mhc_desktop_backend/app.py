@@ -161,6 +161,16 @@ def create_app(
                 tool_store=app.state.tool_store,
                 mcp_store=app.state.mcp_store,
             )
+
+        # Built-in system tools (load_skill) — registered after
+        # content packs so a user-imported ``load_skill`` (rare,
+        # but valid) gets overwritten by the kernel's authoritative
+        # version. Always re-asserted at startup so the kernel
+        # owns the canonical schema and the user can't permanently
+        # disable it.
+        from mhc_desktop_backend.tools.builtin import ensure_builtin_tools
+
+        await ensure_builtin_tools(app)
         yield
         reg: StreamRegistryProtocol | None = app.state.stream_registry
         if reg is not None:

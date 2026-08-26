@@ -62,8 +62,7 @@ from mhc_desktop_backend.protocols import (
     ToolExecutorRegistryProtocol,
     ToolStoreProtocol,
 )
-from mhc_desktop_backend.skills import SkillError, format_skill_message
-from mhc_desktop_backend.skills.models import Skill
+from mhc_desktop_backend.skills import SkillError
 from mhc_desktop_backend.stream_state import SessionStream
 from mhc_desktop_backend.tools import (
     DEFAULT_TOOL_TIMEOUT_SECONDS,
@@ -152,11 +151,18 @@ def _format_skill_root() -> str:
 # installs ship a coherent base without any deploy wiring; deploys
 # replace it via ``create_app(system_prompt_base=...)`` when they
 # need a different brand/compliance boilerplate.
-BASE_SYSTEM_PROMPT = (
-    "Skills are folders on this machine.\n"
-    "Their contents (scripts, references, assets) live under:\n"
-    f"  {_format_skill_root()}/<slug>/\n"
-)
+#
+# Deliberately empty. The previous version spelled out the on-disk
+# skill root (~/.mhc-desktop/skills/<slug>/SKILL.md), which gave
+# the agent the location and led it to ``cmd ls`` / ``cat`` skill
+# files directly -- bypassing ``load_skill`` and pulling in skills
+# the user had not enabled. With ``load_skill`` as the canonical
+# read path, the base prompt carries no location hint at all. The
+# per-request ``## Skills`` section (built in ``_build_skill_section``)
+# lists only the user's enabled skills, and the agent reads bodies
+# via the tool. An enterprise deploy that wants to expose the
+# location can still do so via the ``system_prompt_base`` override.
+BASE_SYSTEM_PROMPT = ""
 
 
 def _resolve_system_prompt_base(override: str | None) -> str:
@@ -182,26 +188,96 @@ def _resolve_system_prompt_base(override: str | None) -> str:
     return str(override)
 
 
+def _build_skill_section(enabled_skills: list[Any]) -> str:
+    """Render the per-request ``## Skills`` block.
+
+    Lists every skill whose ``enabled`` flag is true: one bullet per
+    skill with its display name (the user-facing label — usually the
+    frontmatter ``name``, may have been renamed) and the one-line
+    description from the SKILL.md frontmatter. The model uses this
+    block to decide *whether* to call :func:`load_skill`; the full
+    body, references, and scripts only ship when the model asks.
+
+    ``enabled_skills`` may already be filtered to enabled-only (the
+    chat endpoint does that), but we re-check defensively so a
+    caller that passes the full list still produces the right
+    output. Disabled / empty-description skills are skipped silently
+    — the model can't load them usefully, so listing them would just
+    be noise.
+    """
+    if not enabled_skills:
+        return ""
+    bullets: list[str] = []
+    for s in enabled_skills:
+        # Tolerate either a dataclass-style or a dict-style shape —
+        # the chat endpoint passes Skill dataclasses from the live
+        # store, but tests may pass plain dicts.
+        if isinstance(s, dict):
+            slug = s.get("slug") or ""
+            name = s.get("name") or slug
+            desc = s.get("description") or ""
+            enabled = s.get("enabled", True)
+        else:
+            slug = getattr(s, "slug", "") or ""
+            name = getattr(s, "name", None) or slug
+            desc = getattr(s, "description", None) or ""
+            enabled = getattr(s, "enabled", True)
+        if not enabled or not slug:
+            continue
+        # Escape triple-backticks in the description so a skill that
+        # literally documents itself with a fenced block can't break
+        # the section's formatting.
+        safe_desc = (desc or "").replace("```", "\u200b```")
+        # Slug is the load_skill call's argument; surface it so the
+        # model doesn't have to guess from the human label.
+        bullets.append(
+            f"- **{name}** (`{slug}`) — {safe_desc}" if safe_desc
+            else f"- **{name}** (`{slug}`)"
+        )
+    if not bullets:
+        return ""
+    header = (
+        "## Skills\n\n"
+        "The following skills are configured on this machine. "
+        "Call `load_skill(slug=\"...\")` to pull the full body, "
+        "references, and scripts when you actually need them. "
+        "The body is not loaded unless you ask for it.\n"
+    )
+    return header + "\n".join(bullets)
+
+
 def _build_system_prompt(
     user_addition: str,
     *,
     base_override: str | None = None,
+    enabled_skills: list[Any] | None = None,
 ) -> str:
-    """Assemble the full system prompt: chosen base + user addition.
+    """Assemble the full system prompt.
 
-    The base is required and always emitted. The addition is whatever
-    the user saved in Settings; if missing/empty we skip the divider
-    so the prompt doesn't end with a dangling "\\n\\n".
+    Sections, in order:
 
-    ``base_override`` lets deploys swap the kernel default for their
-    own brand / compliance boilerplate; ``None`` falls back to
-    :data:`BASE_SYSTEM_PROMPT`.
+    1. Chosen base (kernel default or deploy override).
+    2. ``## Skills`` — the per-request enabled-skills listing.
+       Re-built on every chat request so a user toggling a skill's
+       enabled flag in the configuration page takes effect on the
+       next message without a backend restart. Skipped when the
+       user has no enabled skills.
+    3. The user-specified addition from Settings — skipped when
+       empty so the prompt doesn't end with a dangling divider.
+
+    ``base_override`` lets deploys swap the kernel default for
+    their own brand / compliance boilerplate; ``None`` falls back
+    to :data:`BASE_SYSTEM_PROMPT`.
     """
     base = _resolve_system_prompt_base(base_override).rstrip()
     addition = (user_addition or "").strip()
-    if not addition:
-        return base
-    return f"{base}\n\n# User-specified system prompt\n\n{addition}"
+    skills_block = _build_skill_section(enabled_skills or [])
+    parts: list[str] = [base]
+    if skills_block:
+        parts.append(skills_block)
+    if addition:
+        parts.append(f"# User-specified system prompt\n\n{addition}")
+    return "\n\n".join(parts)
 
 
 def get_mcp_manager(request: Request):
@@ -262,38 +338,10 @@ def _attach_user_metadata(coerced: list[Message], raw: list[dict[str, Any]]) -> 
 
 
 def _format_files_block(files: list[dict[str, Any]], user_text: str = "") -> str:
-    r"""Render the [Attached files] block that we splice into a user
-    message just before sending it to the LLM.
-
-    Why this format
-    ---------------
-
-    The user often types a vague prompt like "what's in this?" or
-    "summarize it" and expects the model to know they mean the
-    attached file. The model's only signal that the attached file
-    is the subject of the question is this block -- so the block
-    has to: (a) make the linkage explicit, (b) lead with the
-    absolute path so the tool-call schema (which prefers string
-    fields near the top) picks it up reliably, and (c) never
-    silently drop a file. An entry with no path still gets rendered
-    as a name-only line so the model at least sees the attachment
-    exists and can ask the user for the missing path.
-
-    Format (one file):
-
-        [Attached files -- 1 file. When the user asks about "this",
-        "it", or refers to the attachment without naming it, they
-        mean the file(s) listed below. Use the absolute path with
-        your tools to read each file.]
-
-          name: foo.txt
-          path: C:\Users\demo\foo.txt
-          size: 12 B
-
-    Multi-file: numbered entries (file 1, file 2, ...).
-
-    Determinism: the same input always produces byte-identical
-    output, which is what the controller's prompt-cache key needs.
+    """Render the [Attached files] block spliced into the user
+    message. Path leads each entry so tool-call schemas pick it
+    up; missing paths still render (name-only) so the model sees
+    the attachment. Output is byte-stable for prompt-cache keys.
     """
     n = len(files)
     if n == 1:
@@ -386,89 +434,6 @@ def _assemble_user_files(messages: list[Message]) -> list[Message]:
         new_m["content"] = new_content
         out.append(new_m)  # type: ignore[typeddict-item]
     return out
-
-
-async def _resolve_skill_messages(
-    slugs: list[str],
-    skill_store: SkillStoreProtocol | None,
-    *,
-    policy: ChatPolicy | None = None,
-) -> list[Message]:
-    """Build the list of user-role messages for the requested slugs.
-
-    Disabled skills are filtered out so a misbehaving client cannot
-    bypass the toggle. Missing skills raise ``SkillError`` which the
-    caller turns into a 400. Each enabled skill becomes one ``user``
-    message; the chat endpoint places them right before the user's
-    actual input so the model sees them as a consecutive block.
-    Inline budgets come from ``policy``; ``None`` means the kernel
-    defaults (16 KiB / 64 KiB).
-    """
-    if not skill_store:
-        return []
-    out: list[Message] = []
-    for slug in slugs:
-        s = await skill_store.get(slug)
-        if s is None:
-            raise SkillError(f"skill '{slug}' not found")
-        if not s.enabled:
-            continue
-        # Inline file contents so the model can see scripts, templates,
-        # and datasets that ship with the skill. Limited to a per-skill
-        # budget so a chat request can't OOM by attaching a 100 MiB
-        # bundle — budgets come from ``policy`` or the kernel
-        # default dataclass.
-        inlined = await _inline_skill_files(s, skill_store, policy=policy)
-        out.append({"role": "user", "content": format_skill_message(inlined)})  # type: ignore[typeddict-item]
-    return out
-
-
-async def _inline_skill_files(
-    skill,
-    skill_store: SkillStoreProtocol,
-    policy: ChatPolicy | None = None,
-):
-    """Return a copy of ``skill`` with file bodies inlined into body.
-
-    Files are appended as fenced code blocks at the end of the body.
-    Skill.files already lists every non-SKILL.md file relative to the
-    skill root; we read each through ``skill_store.get_file`` which
-    enforces the type allow-list + size cap so the loop is safe.
-    The per-file and per-skill budgets come from ``policy`` (a
-    :class:`ChatPolicy` injected by deploy) or fall back to the
-    historical 16 KiB / 64 KiB defaults.
-    """
-    files = skill.files
-    if not files:
-        return skill
-    pol = policy or ChatPolicy()
-    chunks: list[str] = []
-    used = 0
-    for rel in files:
-        if used >= pol.inline_skill_max_bytes:
-            break
-        try:
-            ctype, data = await skill_store.get_file(skill.slug, rel)
-        except SkillError:
-            continue
-        if len(data) > pol.inline_file_max_bytes:
-            chunks.append(
-                f"### `{rel}`\n\n(file omitted — exceeds {pol.inline_file_max_bytes // 1024} KiB inline limit)"
-            )
-            continue
-        used += len(data)
-        try:
-            text = data.decode("utf-8")
-        except UnicodeDecodeError:
-            chunks.append(
-                f"### `{rel}`\n\n(binary file, {len(data)} bytes — not inlined)"
-            )
-            continue
-        chunks.append(f"### `{rel}`\n\n```{ctype}\n{text.rstrip()}\n```")
-    if not chunks:
-        return skill
-    appended = "\n\n---\n\n## Attached file contents\n\n" + "\n\n".join(chunks)
-    return Skill(**{**skill.__dict__, "body": (skill.body or "") + appended})
 
 
 async def _event_stream(
@@ -911,6 +876,7 @@ async def _event_stream(
                     started_at=tool_started_at,
                     ok=False,
                     error="cancelled",
+                    args=args,
                 )
                 yield _emit(
                     "tool_end",
@@ -957,6 +923,7 @@ async def _event_stream(
                     started_at=tool_started_at,
                     ok=False,
                     error=f"{err_class}: {raw}",
+                    args=args,
                 )
 
             if mcp_call_log is not None:
@@ -979,6 +946,7 @@ async def _event_stream(
                     name=name,
                     started_at=tool_started_at,
                     ok=True,
+                    args=args,
                 )
             tool_messages.append(
                 {
@@ -1235,7 +1203,28 @@ async def _record_tool(
     started_at: float,
     ok: bool,
     error: str = "",
+    args: dict[str, Any] | None = None,
 ) -> None:
+    """Record one finished tool invocation as a metric.
+
+    Two distinct metrics may come out of a single call:
+
+    * ``kind="tool"`` — always, keyed by the tool's ``model_name``.
+      This drives the regular tool ranking (which tools the model
+      invokes most) and the global tool_call_count.
+
+    * ``kind="skill"`` — only when the model calls
+      ``load_skill(slug=<slug>)``. The slug is the metric's
+      ``name``, so the dashboard's "技能使用排名" rolls up
+      per-skill counts (which skills did the model actually pull
+      into context). A single load_skill call therefore contributes
+      to both ``tool_call_count`` (one) AND ``skill_call_count``
+      (one, under the loaded slug).
+
+    ``args`` is forwarded by the chat handler when the call is
+    known to have been a ``load_skill`` invocation. Other tools
+    skip the skill-kind record.
+    """
     if metrics_repo is None:
         return
     duration_ms = round((time.monotonic() - started_at) * 1000, 2)
@@ -1253,6 +1242,34 @@ async def _record_tool(
         )
     except Exception:  # pragma: no cover
         logger.exception("metrics.record_tool.failed session=%s", session_id)
+    # Skill usage counter — only when the tool call was a
+    # ``load_skill`` invocation. ``args`` carries the call's JSON
+    # arguments; we read ``slug`` defensively (string + non-empty)
+    # so a malformed payload doesn't break the metric. The skill
+    # record is fired independently of the tool record, so an LLM
+    # that calls ``load_skill`` 5 times in a row produces 5
+    # ``kind="skill"`` records — one per actual load.
+    if name == "load_skill" and args:
+        slug = args.get("slug") if isinstance(args, dict) else None
+        if isinstance(slug, str) and slug.strip():
+            try:
+                await metrics_repo.record_tool_call(
+                    ToolCallRecord(
+                        ts=_now_iso(),
+                        session_id=session_id,
+                        kind="skill",
+                        name=slug.strip(),
+                        duration_ms=duration_ms,
+                        status="ok" if ok else "error",
+                        error=error,
+                    )
+                )
+            except Exception:  # pragma: no cover
+                logger.exception(
+                    "metrics.record_skill.failed session=%s slug=%s",
+                    session_id,
+                    slug,
+                )
 
 
 def _sse(event: str, data: dict[str, Any]) -> str:
@@ -1302,14 +1319,29 @@ async def chat(
     # in the session store.
     _attach_user_metadata(messages, raw_messages)
     session_store: SessionStoreProtocol | None = get_session_store(request)
+    skill_store = get_skill_store(request)
+
+    # Per-request enabled-skill listing. Re-read every time so a
+    # user toggling a skill's enabled flag in the configuration
+    # page takes effect on the very next message — the system
+    # prompt is built here, per request, never cached.
+    enabled_skills: list[Any] = []
+    if skill_store is not None:
+        try:
+            all_skills = await skill_store.list()
+        except Exception:  # pragma: no cover — disk failure shouldn't kill chat
+            logger.exception("skill_store.list failed; sending skills section empty")
+            all_skills = []
+        enabled_skills = [s for s in all_skills if getattr(s, "enabled", False)]
 
     # System prompt is assembled server-side from a fixed base (the
     # facts the runtime needs the model to know — skill root, cwd
-    # discipline, etc.) plus the user's saved addition. The client no
-    # longer sends a system_prompt field: keeping the base authoritative
-    # on the server prevents the user from accidentally erasing
-    # critical information when they edit their addition. The base
-    # itself is deploy-injectable via ``system_prompt_base``.
+    # discipline, etc.) plus the user's saved addition, plus the
+    # per-request ``## Skills`` section. The client no longer sends
+    # a system_prompt field: keeping the base authoritative on the
+    # server prevents the user from accidentally erasing critical
+    # information when they edit their addition. The base itself
+    # is deploy-injectable via ``system_prompt_base``.
     prefs_store: PrefsStoreProtocol | None = get_prefs_store(request)
     user_addition = ""
     if prefs_store is not None:
@@ -1323,50 +1355,13 @@ async def chat(
         {
             "role": "system",
             "content": _build_system_prompt(
-                user_addition, base_override=system_prompt_base
+                user_addition,
+                base_override=system_prompt_base,
+                enabled_skills=enabled_skills,
             ),
         },
         *messages,
     ]
-
-    # Skill injection. Skills are sent as user-role messages, NOT
-    # folded into the system prompt. We resolve them now (validates
-    # slugs, filters disabled, inlines attached file contents) and
-    # splice them in right before the user's current input below.
-    raw_skills = body.get("skills") or []
-    if not isinstance(raw_skills, list):
-        raise HTTPException(status_code=400, detail="skills must be a list of slugs")
-
-    # Build the per-skill user messages. Skills are user-role
-    # messages, NOT system prompt — they ship with the conversation
-    # as ephemeral context that the user has explicitly attached.
-    # We insert them right before the user's actual current input so
-    # the model sees the "skill messages + user input" block as the
-    # latest exchange. Inline budgets come from ``chat_policy``.
-    skill_store = get_skill_store(request)
-    try:
-        skill_messages = await _resolve_skill_messages(
-            raw_skills, skill_store, policy=chat_policy
-        )
-    except SkillError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from None
-
-    if skill_messages:
-        # The last message is the user's current input. Place skill
-        # messages immediately before it. If for some reason the last
-        # message isn't a user role (defensive — should never happen),
-        # append skills to the end so they still ship.
-        if messages and messages[-1].get("role") == "user":
-            history = messages[:-1]
-            current_input = messages[-1]
-            messages = [*history, *skill_messages, current_input]
-        else:
-            messages = [*messages, *skill_messages]
-        logger.info(
-            "chat.skills provider=%s skills=%s",
-            provider_name,
-            ",".join(str(s) for s in raw_skills),
-        )
 
     # MCP tool wiring. Tools from attached MCPs are exposed to the LLM
     # via the standard tools= parameter; the manager proxies tool_calls
@@ -1408,28 +1403,19 @@ async def chat(
         stream = await registry.register(session_id)
         stream.assistant_message_id = assistant_message_id
 
-    # ── Usage metrics: record each attached skill / MCP as a
-    # ToolCallRecord(kind="skill"|"mcp"). Counts per *attachment*
-    # (which skills / MCP servers the user reaches for), not per
-    # internal tool call — the ranking the user asked for is at the
-    # server / skill level, not at the per-tool-name level.
+    # ── Usage metrics: record each attached MCP as a
+    # ToolCallRecord(kind="mcp"). Skill usage is no longer recorded
+    # at attachment time — the user might enable twenty skills but
+    # never call any of them. Skill usage is now recorded at the
+    # point the model actually invokes ``load_skill(slug=...)``,
+    # which yields a single ``kind="skill"`` record keyed by the
+    # loaded skill's slug. That counter is what the
+    # "技能使用排名" dashboard rolls up.
     metrics_repo = get_metrics_repo(request)
     if metrics_repo is not None:
-        attached_skills: list[str] = raw_skills if isinstance(raw_skills, list) else []
-        attached_mcps: list[str] = raw_mcps if isinstance(raw_mcps, list) else []
-        for slug in attached_skills:
-            try:
-                await metrics_repo.record_tool_call(
-                    ToolCallRecord(
-                        ts=_now_iso(),
-                        session_id=session_id,
-                        kind="skill",
-                        name=str(slug),
-                        status="ok",
-                    )
-                )
-            except Exception:  # pragma: no cover — metrics never block chat
-                logger.exception("metrics.record_skill.failed slug=%s", slug)
+        attached_mcps: list[str] = (
+            raw_mcps if isinstance(raw_mcps, list) else []
+        )
         for slug in attached_mcps:
             ok = True
             err = ""
@@ -1506,12 +1492,58 @@ async def chat(
                     tool_executor_registry=tool_executor_registry,
                 )
             )
-        logger.info(
-            "chat.tools provider=%s tools=%s resolved=%d",
-            provider_name,
-            ",".join(str(s) for s in raw_tools),
-            len(active_tools),
-        )
+
+    # The ``load_skill`` built-in is always wired in, regardless of
+    # what the user requested: it's the kernel's own way for the
+    # model to pull skill bodies after seeing the per-request
+    # ``## Skills`` section in the system prompt. Without this,
+    # the section would advertise skills the model can't read.
+    # Idempotent against the user's ``tools`` list (no duplicate
+    # resolution if they happen to include it themselves).
+    load_skill_slug = "load_skill"
+    if not any(getattr(t, "name", "") == load_skill_slug for t in active_tools):
+        if tool_store is not None:
+            load_skill_tool = await tool_store.get(load_skill_slug)
+            if (
+                load_skill_tool is not None
+                and load_skill_tool.enabled
+            ):
+                cancel_evt = stream.cancel if stream is not None else None
+                timeout_s = (
+                    chat_policy.tool_timeout_seconds
+                    if chat_policy is not None
+                    else DEFAULT_TOOL_TIMEOUT_SECONDS
+                )
+                active_tools.append(
+                    await build_streaming_tool(
+                        load_skill_tool,
+                        cancel_event=cancel_evt,
+                        timeout=timeout_s,
+                        tool_executor_registry=tool_executor_registry,
+                    )
+                )
+
+    # Per-request INFO log — single line that tells operators the
+    # exact shape of the chat request. Carries the user-attached
+    # tool/skill/MCP counts (not the resolved / enabled ones, so
+    # the log matches what the user sees in the UI) plus the count
+    # of enabled skills that the new system-prompt section will
+    # advertise. Indispensable for "why didn't the model call a
+    # tool?" / "why did the model ignore my skill?" debugging.
+    logger.info(
+        "chat.request provider=%s model=%s msgs=%d "
+        "tools_attached=%d tools_resolved=%d "
+        "mcp_attached=%d mcp_resolved=%d "
+        "skills_enabled=%d",
+        provider_name,
+        model,
+        len(raw_messages),
+        len(raw_tools) if isinstance(raw_tools, list) else 0,
+        len(active_tools),
+        len(raw_mcps) if isinstance(raw_mcps, list) else 0,
+        len(mcp_tools),
+        sum(1 for s in enabled_skills if s.slug),
+    )
 
     async def on_disconnect() -> None:
         """Triggered when the client closes the connection without

@@ -3,16 +3,20 @@
 The contract under test:
 
 1. The client no longer sends ``system_prompt``; the chat router
-   assembles it from a constant base + the user's saved addition.
-2. The base is **always** present (it carries the skill-root hint
-   the model needs to find scripts).
-3. The base is rendered in a portable form (``~/...``) so it does
-   not leak the actual username on whatever machine this runs on.
-4. The user addition is appended verbatim (after a divider) when
+   assembles it from a (now empty) base + the per-request
+   ``## Skills`` section + the user's saved addition.
+2. The base is intentionally empty -- the previous version
+   spelled out the on-disk skill root (``~/.mhc-desktop/skills/``)
+   which let the agent ``cmd ls`` / ``cat`` SKILL.md files
+   directly, bypassing ``load_skill`` and reading skills the user
+   hadn't enabled. ``load_skill`` is now the canonical read path;
+   the per-request ``## Skills`` section is the only place the
+   model sees skill metadata.
+3. The user addition is appended verbatim (after a divider) when
    non-empty, and skipped when empty (no dangling separator).
-5. The base deliberately does NOT define the assistant's identity —
+4. The base deliberately does NOT define the assistant's identity —
    that is the user's prerogative and goes in their addition.
-6. A client that *does* send ``system_prompt`` in the body must
+5. A client that *does* send ``system_prompt`` in the body must
    not be honoured (we ignore it; the field is reserved by the
    server).
 """
@@ -51,20 +55,23 @@ def test_base_alone_does_not_define_identity() -> None:
     assert "you are" not in out.lower()
 
 
-def test_base_alone_mentions_skill_root() -> None:
+def test_base_alone_has_no_skill_location_leak() -> None:
+    """The base must NOT spell out the on-disk skill root.
+
+    Telling the agent where skills live lets it ``cmd ls`` /
+    ``cat`` SKILL.md files directly, bypassing ``load_skill`` and
+    pulling in skills the user didn't enable. ``load_skill`` is
+    now the canonical read path; the per-request ``## Skills``
+    section is what tells the model which skills exist.
+    """
     out = _build_system_prompt("")
-    # Skill root appears in portable ``~/...`` form so it doesn't
-    # bake in the actual username on whatever machine this runs on.
-    assert "/<slug>/" in out
-    assert re.search(r"~/[^\s]*skills", out), (
-        f"base should reference ~/...skills but got: {out!r}"
-    )
+    assert "~/.mhc-desktop" not in out
+    assert "<slug>" not in out
+    assert "load_skill" not in out
 
 
 def test_user_addition_is_appended_under_divider() -> None:
     out = _build_system_prompt("always reply in 中文")
-    # The base must still be there, before the user's text.
-    assert "/<slug>/" in out
     assert "always reply in 中文" in out
     assert "# User-specified system prompt" in out
 
@@ -144,10 +151,9 @@ def _build_app(prefs: _ScriptedPrefsStore) -> FastAPI:
 @pytest.mark.asyncio
 async def test_chat_request_ignores_client_supplied_system_prompt() -> None:
     """The body field ``system_prompt`` is reserved by the server.
-    We must not let the client overwrite the base (e.g. the user
-    erasing the skill-root hint by editing their own text). The
-    router simply ignores the field; what the model sees is
-    exclusively the server-assembled prompt.
+    We must not let the client overwrite the base. The router
+    simply ignores the field; what the model sees is exclusively
+    the server-assembled prompt.
     """
     out_with_addition = _build_system_prompt("user wrote this")
     out_without_addition = _build_system_prompt("")
@@ -162,10 +168,12 @@ async def test_chat_request_ignores_client_supplied_system_prompt() -> None:
 def test_build_system_prompt_fallback_when_addition_empty() -> None:
     """Pin the empty-addition path so the broken-prefs-store fallback
     (which is what the router uses on read failure) is identical to
-    a user who simply hasn't typed anything yet. They must produce
-    the same base prompt — the model must always see the skill-root
-    hint, regardless of whether the user has saved anything.
+    a user who simply hasn't typed anything yet. With the base now
+    empty, both paths produce a clean ``## Skills`` / user-addition
+    message -- the model never sees a dangling skill-location hint
+    regardless of whether prefs read succeeded.
     """
     out = _build_system_prompt("")
-    assert "/<slug>/" in out
+    assert "~/.mhc-desktop" not in out
+    assert "<slug>" not in out
     assert "# User-specified system prompt" not in out
