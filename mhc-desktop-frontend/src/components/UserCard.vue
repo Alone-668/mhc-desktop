@@ -126,7 +126,7 @@ const initials = computed(() => {
   justify-content: center;
   overflow: hidden;
   font-weight: 600;
-  font-size: 12px;
+  font-size: var(--app-font-size, 12px);
 }
 .avatar img {
   width: 100%;
@@ -145,7 +145,7 @@ const initials = computed(() => {
   flex: 1;
 }
 .name {
-  font-size: 12.5px;
+  font-size: var(--app-font-size, 12px);
   font-weight: 600;
   color: var(--text);
   white-space: nowrap;
@@ -153,7 +153,7 @@ const initials = computed(() => {
   text-overflow: ellipsis;
 }
 .username {
-  font-size: 11px;
+  font-size: var(--app-font-size, 12px);
   color: var(--text-faint);
   white-space: nowrap;
   overflow: hidden;
@@ -176,7 +176,7 @@ const initials = computed(() => {
   width: 100%;
   text-align: left;
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--app-font-size, 12px);
   padding: 7px 10px;
   border: 0;
   border-radius: 6px;

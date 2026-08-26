@@ -354,7 +354,7 @@ function cancelRename() {
   border-bottom: 1px solid var(--border);
 }
 .title {
-  font-size: 12px;
+  font-size: var(--app-font-size, 12px);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -376,7 +376,7 @@ function cancelRename() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: var(--app-font-size, 14px);
   line-height: 1;
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
@@ -406,7 +406,7 @@ function cancelRename() {
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  font-size: 11.5px;
+  font-size: var(--app-font-size, 12px);
   color: var(--text-mid);
 }
 .bulk-label {
@@ -415,7 +415,7 @@ function cancelRename() {
 .empty {
   margin: 16px;
   color: var(--text-faint);
-  font-size: 13px;
+  font-size: var(--app-font-size, 14px);
   line-height: 1.5;
 }
 .list {
@@ -462,7 +462,7 @@ function cancelRename() {
   gap: 8px;
 }
 .t {
-  font-size: 13.5px;
+  font-size: var(--app-font-size, 14px);
   font-weight: 500;
   color: var(--text);
   overflow: hidden;
@@ -474,7 +474,7 @@ function cancelRename() {
 }
 .rename-input {
   font: inherit;
-  font-size: 13.5px;
+  font-size: var(--app-font-size, 14px);
   font-weight: 500;
   color: var(--text);
   background: var(--bg);
@@ -490,7 +490,7 @@ function cancelRename() {
   background: transparent;
   border: 0;
   cursor: pointer;
-  font-size: 16px;
+  font-size: var(--app-font-size, 16px);
   color: var(--text-faint);
   padding: 0 4px;
 }
@@ -533,7 +533,7 @@ function cancelRename() {
 }
 .meta {
   margin-top: 4px;
-  font-size: 11.5px;
+  font-size: var(--app-font-size, 12px);
   color: var(--text-mid);
   display: flex;
   gap: 4px;

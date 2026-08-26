@@ -75,7 +75,7 @@ function formatCount(n: number): string {
   background: transparent;
   border: 0;
   padding: 0;
-  font-size: 12.5px;
+  font-size: var(--app-font-size, 12px);
   line-height: 1.65;
   color: var(--text-faint);
   margin-left: 14px;          /* slight indent, like a quoted aside */
@@ -99,7 +99,7 @@ function formatCount(n: number): string {
 
 .tl-thinking-marker {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--app-font-size, 12px);
   color: var(--text-faint);
   display: inline-block;
   transform: translateY(-0.5px);
@@ -114,14 +114,14 @@ function formatCount(n: number): string {
 }
 
 .tl-thinking-label {
-  font-size: 11.5px;
+  font-size: var(--app-font-size, 12px);
   font-style: italic;
   color: inherit;
   letter-spacing: 0;
 }
 .tl-thinking-meta {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--app-font-size, 12px);
   color: var(--text-faint);
   font-variant-numeric: tabular-nums;
 }
@@ -134,7 +134,7 @@ function formatCount(n: number): string {
   white-space: pre-wrap;
   word-break: break-word;
   font-family: var(--font-sans);
-  font-size: 12.5px;
+  font-size: var(--app-font-size, 12px);
   line-height: 1.65;
   font-style: italic;
   color: var(--text-mid);

@@ -318,7 +318,7 @@ const enabledTools = computed(() => tools.enabledTools)
   border: 0;
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--app-font-size, 12px);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -351,7 +351,7 @@ const enabledTools = computed(() => tools.enabledTools)
 .fold-count {
   background: var(--bg-hover);
   color: var(--text-faint);
-  font-size: 10.5px;
+  font-size: var(--app-font-size, 12px);
   padding: 1px 7px;
   border-radius: 999px;
   font-weight: 700;
@@ -432,7 +432,7 @@ const enabledTools = computed(() => tools.enabledTools)
   flex: 1;
 }
 .wskill-name {
-  font-size: 12.5px;
+  font-size: var(--app-font-size, 12px);
   font-weight: 600;
   color: var(--text);
   white-space: nowrap;
@@ -440,7 +440,7 @@ const enabledTools = computed(() => tools.enabledTools)
   text-overflow: ellipsis;
 }
 .wskill-desc {
-  font-size: 11px;
+  font-size: var(--app-font-size, 12px);
   color: var(--text-mid);
   line-height: 1.4;
   margin-top: 2px;
@@ -452,7 +452,7 @@ const enabledTools = computed(() => tools.enabledTools)
 .empty {
   list-style: none;
   padding: 8px 10px;
-  font-size: 11.5px;
+  font-size: var(--app-font-size, 12px);
   color: var(--text-faint);
   font-style: italic;
 }

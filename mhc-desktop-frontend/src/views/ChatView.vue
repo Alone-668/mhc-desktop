@@ -1535,7 +1535,7 @@ function groupTimelineSegments(
   border-radius: 999px;
   background: var(--bg-subtle);
   color: var(--text-mid);
-  font-size: 12px;
+  font-size: var(--app-font-size, 12px);
   align-self: flex-start;
 }
 .tool-summary-text {
@@ -1564,7 +1564,7 @@ function groupTimelineSegments(
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--app-font-size, 12px);
   color: var(--text-mid);
 }
 .msg-skills-icon {
@@ -1938,7 +1938,7 @@ function groupTimelineSegments(
   border-radius: 999px;
   background: var(--bg);
   border: 1px solid var(--border);
-  font-size: 11.5px;
+  font-size: var(--app-font-size, 12px);
   color: var(--text);
 }
 .active-chip.mcp-chip {
@@ -1953,7 +1953,7 @@ function groupTimelineSegments(
   border: 0;
   background: transparent;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--app-font-size, 14px);
   line-height: 1;
   color: var(--text-faint);
   padding: 0 4px;
