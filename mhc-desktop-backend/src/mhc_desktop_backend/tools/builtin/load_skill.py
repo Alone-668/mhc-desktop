@@ -10,6 +10,7 @@ from typing import Any, AsyncIterator, Protocol
 
 class _SkillStoreLike(Protocol):
     async def get_body(self, slug: str) -> str | None: ...
+    async def get(self, slug: str) -> Any: ...
 
 
 # Bound by ensure_builtin_tools at startup; None for tests.
@@ -52,4 +53,20 @@ chat handler wraps it into a ``role: "tool"`` message)."""
     if body is None:
         yield f"(skill '{slug}' not found)"
         return
+    # Append the skill's on-disk location so the model can resolve
+    # any relative paths the skill body mentions (scripts, assets,
+    # references) against the right directory. Best-effort: a
+    # failure to read the install path must not break the body yield.
+    skill = None
+    try:
+        skill = await store.get(slug.strip())
+    except Exception:  # pragma: no cover — defensive
+        skill = None
+    install_path = getattr(skill, "path", "") if skill is not None else ""
+    if install_path:
+        body = (
+            f"{body}\n\n[Note: this skill's dedicated storage location is "
+            f"{install_path}. Resolve any relative paths mentioned in the "
+            "skill against this directory.]"
+        )
     yield body

@@ -37,6 +37,10 @@ class Skill:
     enabled: bool = True
     origin: str = "imported"  # "imported" | "local"
     source_path: str = ""
+    # On-disk location where this skill is actually installed
+    # (``<skills_dir>/<slug>``). Distinct from ``source_path``,
+    # which records where the skill was imported from.
+    path: str = ""
     version: str = ""
     license: str = ""
     created_at: str = ""

@@ -364,6 +364,7 @@ class SkillStore:
             enabled=bool(entry.get("enabled", True)),
             origin=entry.get("origin", "imported"),
             source_path=entry.get("source_path", ""),
+            path=str(path),
             version=fm.version,
             license=fm.license,
             created_at=entry.get("created_at", ""),

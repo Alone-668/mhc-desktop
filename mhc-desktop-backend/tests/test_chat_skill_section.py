@@ -288,6 +288,63 @@ def test_load_skill_tool_run_handles_missing_store() -> None:
         _builtin.set_skill_store(prev)
 
 
+def test_load_skill_tool_run_appends_source_path_note(tmp_path: Path) -> None:
+    """The body should be followed by a footer pointing the model
+    at the skill's on-disk location so relative paths in the
+    skill body can be resolved."""
+    from mhc_desktop_backend.tools.builtin import load_skill as _builtin
+
+    class _FakeStore:
+        async def get_body(self, slug: str):
+            return "# alpha body\n"
+
+        async def get(self, slug: str):
+            return type("S", (), {"path": str(tmp_path / "alpha")})()
+
+    prev = _builtin._skill_store
+    try:
+        _builtin.set_skill_store(_FakeStore())
+        import asyncio
+
+        async def _go():
+            out = []
+            async for chunk in _builtin.tool_run(slug="alpha"):
+                out.append(chunk)
+            return "".join(out)
+
+        result = asyncio.run(_go())
+        assert result.startswith("# alpha body\n")
+        assert "dedicated storage location is" in result
+        assert str(tmp_path / "alpha") in result
+    finally:
+        _builtin.set_skill_store(prev)
+
+
+def test_load_skill_tool_run_skips_note_when_get_fails() -> None:
+    """Older / read-only skill sources may not implement ``get``.
+    The body must still come back without the note."""
+    from mhc_desktop_backend.tools.builtin import load_skill as _builtin
+
+    class _BodyOnlyStore:
+        async def get_body(self, slug: str):
+            return "# alpha body\n"
+
+    prev = _builtin._skill_store
+    try:
+        _builtin.set_skill_store(_BodyOnlyStore())
+        import asyncio
+
+        async def _go():
+            out = []
+            async for chunk in _builtin.tool_run(slug="alpha"):
+                out.append(chunk)
+            return "".join(out)
+
+        assert asyncio.run(_go()) == "# alpha body\n"
+    finally:
+        _builtin.set_skill_store(prev)
+
+
 # ── ensure_builtin_tools registers in tool_store ────────────────────────────
 
 
