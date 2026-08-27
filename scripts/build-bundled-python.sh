@@ -60,19 +60,27 @@ if [ -d "$OUT/venv" ]; then
 fi
 
 echo "[bundled-py] installing backend deps into python/Lib/site-packages"
-# Try aliyun first (fastest in China), fall back to PyPI official
-# (aliyun mirrors may lag behind official PyPI by a few minutes for
-# newly-published versions of mhc-desktop-backend / mhc-desktop-deploy).
+# Two of the packages here are workspace members — they have local
+# source in this repo (see [tool.uv.workspace] in pyproject.toml).
+# Install those by path so we always ship whatever's in the working
+# tree, never a stale PyPI copy we never published. Third-party
+# packages (minimal-harness, httpx) have no local source — those
+# go through the index like any normal pip install.
 # Two non-obvious pins:
 #   --prerelease=allow  -> minimal-harness is on a 0.8.1a6 alpha tag
 #   "httpx<1.0"        -> PyPI's latest httpx is 1.0.dev5, which
 #                          removes AsyncClient. Cap on stable.
+# Try aliyun first (fastest in China), fall back to PyPI official
+# (aliyun may lag by a few minutes for newly-published versions).
 for idx in "https://mirrors.aliyun.com/pypi/simple/" "https://pypi.org/simple/"; do
     if uv pip install --python "$OUT/python/python.exe" \
         --index-url "$idx" \
         --prerelease=allow \
+        --no-editable \
         "httpx<1.0" \
-        minimal-harness mhc-desktop-backend mhc-desktop-deploy \
+        "$ROOT/mhc-desktop-backend" \
+        "$ROOT/mhc-desktop-deploy" \
+        minimal-harness \
         >/dev/null 2>&1; then
         echo "[bundled-py]   pulled backend deps from $idx"
         break
