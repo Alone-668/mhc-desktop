@@ -204,6 +204,32 @@ watch(
         !!liveId &&
         diskLast?.role === "user" &&
         (liveState.streaming || hasLiveContent)
+      // First-send race guard. ``send()`` pushes ``[userMsg,
+      // placeholder]`` to ``messages.value`` then synchronously
+      // calls ``streams.start`` (which sets
+      // ``h.state.assistantMessageId = assistantId``). The watcher's
+      // ``api.getSession(id)`` races with the bus's fire-and-forget
+      // ``_persist``; if the GET resolves BEFORE the PUT lands,
+      // ``sess.messages`` is empty, ``diskLast`` is undefined, so
+      // ``needsLive`` is false and the line below wipes the
+      // freshly-pushed user message + placeholder. Subsequent SSE
+      // events then ``find`` no target in ``messages.value`` and
+      // every chunk is dropped — the chat looks frozen until the
+      // user triggers another ``currentId`` change. Detect by
+      // checking that ``send()`` already left the placeholder at
+      // the tail with the live id: that combination can only come
+      // from this same tick, so trust the local view, fold any
+      // bus-side state into it, and bail.
+      if (
+        !!liveId &&
+        sess.messages.length === 0 &&
+        messages.value.length > 0 &&
+        messages.value[messages.value.length - 1].id === liveId
+      ) {
+        _foldLiveIntoMessages(liveState)
+        scrollToBottom()
+        return
+      }
       messages.value = sess.messages.map((m) => ({ ...m, id: crypto.randomUUID() }))
       if (needsLive) {
         // The in-flight assistant message is ``pending:true`` while
