@@ -6,7 +6,7 @@ import { useSessionStreamsStore } from "../stores/sessionStreams"
 import { useSkillsStore } from "../stores/skills"
 import { useMCPsStore } from "../stores/mcps"
 import { useToolsStore } from "../stores/tools"
-import { api, type ChatMessage, type LLMToolCall } from "../api/client"
+import { api, type ChatMessage, type ChatRequestMessage, type LLMToolCall } from "../api/client"
 import Icon, { type IconName } from "../components/Icon.vue"
 import MarkdownView from "../components/MarkdownView.vue"
 import ToolCallCapsule from "../components/ToolCallCapsule.vue"
@@ -593,12 +593,12 @@ function composeMessagesForPersist(): ChatMessage[] {
  *  cancelled" from the role=tool message itself. */
 function buildLLMMessages(
   messages: LocalMessage[],
-): ChatMessage[] {
-  const out: ChatMessage[] = []
+): ChatRequestMessage[] {
+  const out: ChatRequestMessage[] = []
   for (const m of messages) {
     if (m.pending) continue
     if (m.role === "user") {
-      const u: ChatMessage = {
+      const u: ChatRequestMessage = {
         role: "user",
         content: m.content || "",
       }
@@ -623,7 +623,7 @@ function buildLLMMessages(
       out.push({
         role: "assistant",
         content: m.content || "",
-        llm_tool_calls: llmToolCalls,
+        tool_calls: llmToolCalls,
       })
       // Walk the segment timeline and emit one role=tool message
       // per tool segment so the LLM sees the result / error /

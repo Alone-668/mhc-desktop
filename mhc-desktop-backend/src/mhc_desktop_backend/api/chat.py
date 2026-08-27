@@ -331,7 +331,6 @@ def _attach_user_metadata(coerced: list[Message], raw: list[dict[str, Any]]) -> 
             "tool_calls",
             "segments",
             "tool_call_id",
-            "llm_tool_calls",
         ):
             if key in original and key not in c:
                 c[key] = original[key]  # type: ignore[literal-required]

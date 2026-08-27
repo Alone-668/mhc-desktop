@@ -145,9 +145,8 @@ export interface Provider {
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool"
   content: string
-  /** Wire-format tool-call id (for ``role: "tool"`` messages the
-   *  frontend reconstructs from the segment timeline). The LLM
-   *  matches it back to the assistant's ``llm_tool_calls[i].id``. */
+  /** Persisted display-tool-call id (for ``role: "tool"`` segments
+   *  the UI replays from the segment timeline on reload). */
   tool_call_id?: string
   /** Skill slugs the user attached to this turn. Persisted on user
    * messages so the UI can show which skills were in scope when the
@@ -178,14 +177,6 @@ export interface ChatMessage {
    *  capsule row. Backend ignores this field for LLM-routing; it
    *  is purely a display-persistence concern. */
   tool_calls?: ToolCallPersistence[]
-  /** Wire-format tool calls in OpenAI's
-   *  ``{id, type, function:{name, arguments}}`` shape — set only
-   *  on outgoing chat requests so the LLM sees the previous turn's
-   *  tool calls in the shape it understands. Reconstructed at
-   *  send time from ``tool_calls`` + the segment timeline so a
-   *  turn that was cancelled mid-tool still carries full context
-   *  into the next LLM call. See ``ChatView.buildLLMMessages``. */
-  llm_tool_calls?: LLMToolCall[]
   /** Ordered assistant-message timeline; see ``MessageSegmentPersistence``. */
   segments?: MessageSegmentPersistence[]
   /** ``true`` when an assistant message was cancelled mid-stream
@@ -194,6 +185,24 @@ export interface ChatMessage {
    *  Backend treats it as display metadata — never sent to the
    *  LLM as part of a message. */
   cancelled?: boolean
+}
+
+/** Wire-format shape of a chat message in the outgoing ``/api/v1/chat``
+ *  request payload — mirrors what the OpenAI-compatible adapter
+ *  actually reads. Distinct from ``ChatMessage`` because the wire
+ *  needs OpenAI-shaped ``tool_calls`` (``{id, type, function:{...}}``)
+ *  whereas persistence needs the frontend's display shape
+ *  (``ToolCallPersistence``). Keeping them as separate types forces
+ *  the conversion at one boundary (``ChatView.buildLLMMessages``)
+ *  instead of letting two shapes hide under the same field name. */
+export interface ChatRequestMessage {
+  role: "system" | "user" | "assistant" | "tool"
+  content: string
+  tool_call_id?: string
+  mcp?: string[]
+  tools?: string[]
+  files?: ChatFileAttachment[]
+  tool_calls?: LLMToolCall[]
 }
 
 export interface ChatFileAttachment {
@@ -257,7 +266,7 @@ export type MessageSegmentPersistence =
 export interface ChatRequest {
   provider: string
   model?: string
-  messages: ChatMessage[]
+  messages: ChatRequestMessage[]
   skills?: string[]  // active skill slugs for this message
   mcp?: string[]    // active MCP slugs for this message
   /** Session id echoed back on every SSE event so the frontend can

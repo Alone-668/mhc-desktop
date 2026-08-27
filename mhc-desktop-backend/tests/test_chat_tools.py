@@ -614,7 +614,7 @@ async def test_chat_preserves_cancelled_tool_context(tmp_path: Path):
                         {
                             "role": "assistant",
                             "content": "",
-                            "llm_tool_calls": [
+                            "tool_calls": [
                                 {
                                     "id": "call_abc",
                                     "type": "function",
@@ -658,7 +658,7 @@ async def test_chat_preserves_cancelled_tool_context(tmp_path: Path):
     # model can match it against the tool result below it.
     asst = sent[1]
     assert asst["role"] == "assistant"
-    assert asst.get("llm_tool_calls") == [
+    assert asst.get("tool_calls") == [
         {
             "id": "call_abc",
             "type": "function",
