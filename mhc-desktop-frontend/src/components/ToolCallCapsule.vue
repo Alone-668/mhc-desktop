@@ -145,7 +145,19 @@ onBeforeUnmount(() => {
   }
 })
 
+// During streaming the model hasn't finished emitting arguments
+// yet — we only carry a partial ``__raw__`` buffer. Returned
+// string when in that state, otherwise null so callers fall back
+// to the parsed-args path.
+const streamingRawArgs = computed<string | null>(() => {
+  const keys = Object.keys(props.args)
+  return keys.length === 1 && keys[0] === "__raw__"
+    ? String(props.args.__raw__)
+    : null
+})
 const argsPreview = computed(() => {
+  const streaming = streamingRawArgs.value
+  if (streaming !== null) return streaming
   const keys = Object.keys(props.args)
   if (keys.length === 0) return ""
   return keys
@@ -156,6 +168,8 @@ const argsPreview = computed(() => {
 const resultText = computed(() => props.result ?? "")
 const errorText = computed(() => props.error ?? "")
 const formattedArgs = computed(() => {
+  const streaming = streamingRawArgs.value
+  if (streaming !== null) return streaming
   try {
     return JSON.stringify(props.args, null, 2)
   } catch {

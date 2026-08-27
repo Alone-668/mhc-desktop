@@ -313,6 +313,19 @@ function _applyEventToMessages(ev: import("../api/client").StreamEvent) {
     const m = messages.value.find((x) => x.id === liveId)
     if (!m) return
     m.tool_calls = m.tool_calls ?? []
+    // If ``tool_args_start`` already pushed a pending capsule for
+    // this call_id, transition it to executing instead of pushing
+    // a second one — otherwise we'd render a pending ghost that
+    // never updates alongside the real one.
+    const existing = m.tool_calls.find((t) => t.call_id === ev.call_id)
+    if (existing) {
+      existing.name = ev.name
+      existing.kind = ev.kind
+      existing.args = ev.args
+      existing.status = "executing"
+      if (!existing.startedAt) existing.startedAt = Date.now()
+      return
+    }
     const call = {
       call_id: ev.call_id,
       kind: ev.kind,
@@ -326,6 +339,54 @@ function _applyEventToMessages(ev: import("../api/client").StreamEvent) {
     // collecting it for the bottom of the message.
     const segs = (m.segments ??= [])
     segs.push({ kind: "tool", call })
+    return
+  }
+  if (ev.type === "tool_args_start") {
+    // Model just started emitting a tool call — args haven't
+    // finished yet. Push a pending capsule now so the user sees
+    // the call materialise immediately, with arguments filling
+    // in on each subsequent ``tool_args_delta``.
+    const liveId = liveAssistantId.value
+    if (!liveId) return
+    const m = messages.value.find((x) => x.id === liveId)
+    if (!m) return
+    m.tool_calls = m.tool_calls ?? []
+    // Don't double-push if the bus (or a retry) sends the same
+    // start event twice — refresh name/kind on the existing
+    // entry instead.
+    const existing = m.tool_calls.find((t) => t.call_id === ev.call_id)
+    if (existing) {
+      if (ev.name) existing.name = ev.name
+      existing.kind = ev.kind
+      return
+    }
+    const call = {
+      call_id: ev.call_id,
+      kind: ev.kind,
+      name: ev.name || "tool_call",
+      args: {} as Record<string, unknown>,
+      status: "pending" as const,
+    }
+    m.tool_calls.push(call)
+    const segs = (m.segments ??= [])
+    segs.push({ kind: "tool", call })
+    return
+  }
+  if (ev.type === "tool_args_delta") {
+    // Args still streaming in — accumulate into the pending
+    // capsule's ``__raw__`` buffer so opening it mid-stream
+    // shows the half-formed JSON the model has produced so far.
+    const liveId = liveAssistantId.value
+    if (!liveId) return
+    const idx = messages.value.findIndex((x) => x.id === liveId)
+    if (idx < 0) return
+    const tcs = (messages.value[idx].tool_calls ??= [])
+    const tc = tcs.find((t) => t.call_id === ev.call_id)
+    _appendRawArgs(tc?.args, ev.arguments_chunk)
+    const seg = messages.value[idx].segments?.find(
+      (s) => s.kind === "tool" && s.call.call_id === ev.call_id,
+    )
+    if (seg && seg.kind === "tool") _appendRawArgs(seg.call.args, ev.arguments_chunk)
     return
   }
   if (ev.type === "tool_progress") {
@@ -405,6 +466,20 @@ function _applyEventToMessages(ev: import("../api/client").StreamEvent) {
     }
     return
   }
+}
+
+// Append a partial-arguments chunk into the ``__raw__`` buffer
+// both ``m.tool_calls[i].args`` and the matching segment's
+// ``call.args`` carry while the model is still streaming. The
+// sentinel is read by ``ToolCallCapsule`` to decide whether to
+// render raw text vs. parsed JSON.
+function _appendRawArgs(
+  args: Record<string, unknown> | undefined,
+  chunk: string,
+): void {
+  if (!args) return
+  const prev = args.__raw__
+  args.__raw__ = typeof prev === "string" ? prev + chunk : chunk
 }
 
 function _foldLiveIntoMessages(state: import("../stores/sessionStreams").SessionStreamState) {
