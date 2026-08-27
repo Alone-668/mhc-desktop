@@ -529,7 +529,7 @@ async def _event_stream(
                     # ``name`` may arrive a chunk later; fall
                     # back to a placeholder so the UI can label
                     # the capsule immediately.
-                    name_now = getattr(tc.function, "name", None) or ""
+                    name_now = getattr(tc, "name", None) or ""
                     if name_now:
                         pending["name"] = name_now
                     yield _emit(
@@ -542,21 +542,22 @@ async def _event_stream(
                     )
                 if pending is None:
                     continue
-                fn = getattr(tc, "function", None)
-                if fn is not None:
-                    name_chunk = getattr(fn, "name", None) or ""
-                    args_chunk = getattr(fn, "arguments", None) or ""
-                    if name_chunk and name_chunk != pending["name"]:
-                        pending["name"] = name_chunk
-                    if args_chunk:
-                        pending["arguments"] += args_chunk
-                        yield _emit(
-                            "tool_args_delta",
-                            {
-                                "call_id": pending["call_id"],
-                                "arguments_chunk": args_chunk,
-                            },
-                        )
+                # ``ToolCallDelta`` (minimal_harness' provider-agnostic
+                # shape) flattens ``function.name`` / ``function.arguments``
+                # onto the delta itself — no nested ``.function`` object.
+                name_chunk = getattr(tc, "name", None) or ""
+                args_chunk = getattr(tc, "arguments", None) or ""
+                if name_chunk and name_chunk != pending["name"]:
+                    pending["name"] = name_chunk
+                if args_chunk:
+                    pending["arguments"] += args_chunk
+                    yield _emit(
+                        "tool_args_delta",
+                        {
+                            "call_id": pending["call_id"],
+                            "arguments_chunk": args_chunk,
+                        },
+                    )
 
     provider = await store.get(provider_name)
     if provider is None:

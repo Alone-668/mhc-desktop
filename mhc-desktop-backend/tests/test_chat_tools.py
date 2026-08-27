@@ -696,14 +696,14 @@ def test_tool_args_streaming_emits_args_start_then_start():
     from dataclasses import dataclass, field
 
     # Stub provider that yields a stream of tool_call deltas.
+    # Mirrors ``minimal_harness.types.ToolCallDelta`` (the flat
+    # provider-agnostic shape both the OpenAI and Anthropic
+    # adapters emit): index/id at the top level, ``name`` and
+    # ``arguments`` flattened — no nested ``function`` object.
     @dataclass
     class _ToolCallDelta:
         index: int = 0
         id: str | None = None
-        function: Any = None
-
-    @dataclass
-    class _ToolCallFunction:
         name: str | None = None
         arguments: str | None = None
 
@@ -723,7 +723,7 @@ def test_tool_args_streaming_emits_args_start_then_start():
                         _ToolCallDelta(
                             index=0,
                             id="call_provider_123",
-                            function=_ToolCallFunction(name="cmd"),
+                            name="cmd",
                         ),
                     ]
                 ),
@@ -731,7 +731,7 @@ def test_tool_args_streaming_emits_args_start_then_start():
                     tool_calls=[
                         _ToolCallDelta(
                             index=0,
-                            function=_ToolCallFunction(arguments='{"command":'),
+                            arguments='{"command":',
                         ),
                     ]
                 ),
@@ -739,7 +739,7 @@ def test_tool_args_streaming_emits_args_start_then_start():
                     tool_calls=[
                         _ToolCallDelta(
                             index=0,
-                            function=_ToolCallFunction(arguments='"ls /tmp","timeout":60}'),
+                            arguments='"ls /tmp","timeout":60}',
                         ),
                     ]
                 ),
