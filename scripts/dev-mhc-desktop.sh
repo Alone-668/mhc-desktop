@@ -51,7 +51,7 @@ wait_for() {
 }
 
 echo "[mhc-dev] Starting backend on :$BACKEND_PORT ..."
-(python -m mhc_desktop_deploy) > "$LOG_DIR/mhc-desktop-backend.log" 2>&1 &
+(uv run python -m mhc_desktop_deploy) > "$LOG_DIR/mhc-desktop-backend.log" 2>&1 &
 BACKEND_PID=$!
 pids+=("$BACKEND_PID")
 
