@@ -49,11 +49,6 @@ const MAX_FILES = 5
 const attachedFiles = ref<
   Array<{ name: string; path: string; size: number; type: string }>
 >([])
-/** Per-message "is the long-tool-chain summary expanded" state.
-   Initially true for short chains, false for long ones — the user
-   can re-expand a collapsed chain with one click. Keyed by message
-   id. */
-const toolChainOpen = ref<Record<string, boolean>>({})
 const expanded = ref(false)
 const modelOpen = ref(false)
 const modelPickerEl = ref<HTMLElement | null>(null)
@@ -1095,31 +1090,6 @@ function isStreamingSegment(
   return si === lastIndex && m.segments[si].kind === "text"
 }
 
-/** Count tool segments in a message. Used to decide whether the
- *  timeline should auto-collapse into a compact summary — runs
- *  with many tools otherwise dominate the conversation column. */
-function toolSegmentCount(m: LocalMessage): number {
-  if (!m.segments) return 0
-  return m.segments.filter((s) => s.kind === "tool").length
-}
-
-/** Distinct tool names (shortName) in delivery order. Used by the
- *  compact summary to give the user a glanceable list. */
-function toolSummaryNames(m: LocalMessage): string[] {
-  if (!m.segments) return []
-  const seen = new Set<string>()
-  const out: string[] = []
-  for (const s of m.segments) {
-    if (s.kind !== "tool") continue
-    const short = toolShortName(s.call.name)
-    if (!seen.has(short)) {
-      seen.add(short)
-      out.push(short)
-    }
-  }
-  return out
-}
-
 /** Group consecutive tool segments into runs so the timeline can
  *  lay each run on a single horizontal row (with wrap). Text and
  *  thinking segments stay as their own items so they keep the
@@ -1189,27 +1159,7 @@ function groupTimelineSegments(
                    the exact sequence the model produced them.
                    Thinking, prose and tool calls interleave instead
                    of all capsules being dumped under the text. -->
-              <div
-                v-if="
-                  toolSegmentCount(item as unknown as LocalMessage) > 5 &&
-                  !(toolChainOpen[(item as unknown as LocalMessage).id] ?? false)
-                "
-                class="tool-summary"
-              >
-                <Icon name="package" :width="13" :height="13" />
-                <span class="tool-summary-text">
-                  Ran {{ toolSegmentCount(item as unknown as LocalMessage) }}
-                  tools · {{ toolSummaryNames(item as unknown as LocalMessage).join(', ') }}
-                </span>
-                <button
-                  class="tool-summary-btn"
-                  @click="toolChainOpen[(item as unknown as LocalMessage).id] = true"
-                >
-                  <Icon name="chevron-down" :width="12" :height="12" />
-                  <span>Show timeline</span>
-                </button>
-              </div>
-              <div v-else class="timeline" role="list">
+              <div class="timeline" role="list">
                 <template
                   v-for="(grp, gi) in groupTimelineSegments((item as unknown as LocalMessage).segments!)"
                   :key="gi"
@@ -1770,41 +1720,6 @@ function groupTimelineSegments(
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
-}
-
-/* Compact summary row shown in place of a long tool chain. Hides
-   >5 capsules behind one click, so the conversation column doesn't
-   get dominated by an enormous run. */
-.tool-summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg-subtle);
-  color: var(--text-mid);
-  font-size: var(--app-font-size, 12px);
-  align-self: flex-start;
-}
-.tool-summary-text {
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
-.tool-summary-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  margin-left: 2px;
-  border: 0;
-  background: transparent;
-  color: var(--accent);
-  font: inherit;
-  cursor: pointer;
-}
-.tool-summary-btn:hover {
-  text-decoration: underline;
 }
 
 .error {
