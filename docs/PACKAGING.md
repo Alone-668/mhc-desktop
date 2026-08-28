@@ -462,6 +462,15 @@ site-packages 现在直接住在 PBS 的 `python/Lib/site-packages`（无 venv�
 
 **保留**：所有 `*.dist-info/`、`__pycache__/`（首次启动会重建）、`.libs/` DLL。
 
+### 6.4 语音输入模型（sherpa-onnx）：二进制不入 git，缺了 fail fast
+
+`mhc-desktop-frontend/public/sherpa/` 是 sherpa-onnx WASM 语音识别运行时 + ~199MB 模型（.data）。**这些二进制不入 git**（`mhc-desktop-frontend/.gitignore` 已排除 `public/sherpa/`），全新 clone 后需要手动解包一次。
+
+- **来源**：<https://github.com/k2-fsa/sherpa-onnx/releases>，v1.13.6，资产 `sherpa-onnx-wasm-simd-v1.13.6-zh-en-asr-zipformer.tar.bz2`（zh+en 双语 zipformer；换语言就换对应的 wasm-simd 包）。
+- **解包后放进** `mhc-desktop-frontend/public/sherpa/`，需要的四个文件：`sherpa-onnx-asr.js`、`sherpa-onnx-wasm-main-asr.js`、`sherpa-onnx-wasm-main-asr.wasm`、`sherpa-onnx-wasm-main-asr.data`。运行时由前端 `lib/voiceInput.ts` 动态加载。
+- **为什么 step 1 要挡**：vite 会把 `public/` 原样拷进 `dist/` → `build-spa` 进 backend `static/` → 随安装包 ship。模型缺失时 SPA 构建**不会报错**，但装上后的语音输入会静默失效——所以 `scripts/build-spa.{sh,ps1}` 在 vite build 前检查上面四个文件，缺任何一个就打印来源提示并 `exit 1`（fail fast，绝不发坏包）。
+- **还原流程**：下载上述 tar.bz2 → 解压 → 把四个文件丢回 `public/sherpa/`，然后照常 1→2→3 打包。
+
 ---
 
 ## 7. 验证清单
