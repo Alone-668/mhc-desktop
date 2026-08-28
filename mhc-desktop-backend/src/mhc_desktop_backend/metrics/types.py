@@ -38,6 +38,7 @@ class LLMCallRecord:
     completion_tokens: int
     duration_ms: float
     status: str  # "ok" | "error" | "cancelled"
+    user_id: str = ""  # IDaaS uid; "" = anonymous / legacy
     error: str = ""
     cancelled: bool = False
 
@@ -62,6 +63,7 @@ class ToolCallRecord:
     session_id: str
     kind: str  # "tool" | "mcp" | "skill"
     name: str  # tool model_name / mcp server slug / skill slug
+    user_id: str = ""  # IDaaS uid; "" = anonymous / legacy
     duration_ms: float = 0.0
     status: str = "ok"  # "ok" | "error" | "cancelled"
     error: str = ""

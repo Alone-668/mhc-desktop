@@ -82,6 +82,7 @@ def aggregate_summary(
     *,
     date_from: str | None = None,
     date_to: str | None = None,
+    user_id: str | None = None,
     conversation_count_by_day: dict[str, int] | None = None,
 ) -> SummaryBucket:
     """Compute the dashboard's top-card metrics.
@@ -90,6 +91,10 @@ def aggregate_summary(
     from the session store — it is *not* computed from the LLM
     stream (a cancelled-before-anything call still counts as a
     conversation, because the user opened one).
+
+    When ``user_id`` scoping is active, LLM/Tool/… counts are the
+    current user's only, but ``conversation_count`` is still
+    machine-wide — sessions carry no user attribution yet.
     """
     bucket = SummaryBucket()
     model_durations: dict[tuple[str, str], list[float]] = {}
@@ -98,6 +103,8 @@ def aggregate_summary(
 
     for r in llm:
         if not _within(r.ts, date_from, date_to):
+            continue
+        if user_id is not None and r.user_id != user_id:
             continue
         bucket.llm_call_count += 1
         bucket.prompt_tokens += r.prompt_tokens
@@ -112,6 +119,8 @@ def aggregate_summary(
 
     for r in tools:
         if not _within(r.ts, date_from, date_to):
+            continue
+        if user_id is not None and r.user_id != user_id:
             continue
         if r.kind == "skill":
             bucket.skill_call_count += 1
@@ -166,16 +175,17 @@ def rank_items(
     *,
     date_from: str | None = None,
     date_to: str | None = None,
+    user_id: str | None = None,
 ) -> list[RankedItem]:
     """Return the full (un-paginated) ranking for one kind."""
     if kind == RANKING_KIND_TOOLS:
-        return _rank_by_kind("tool", tools, date_from, date_to)
+        return _rank_by_kind("tool", tools, date_from, date_to, user_id)
     if kind == RANKING_KIND_SKILLS:
-        return _rank_by_kind("skill", tools, date_from, date_to)
+        return _rank_by_kind("skill", tools, date_from, date_to, user_id)
     if kind == RANKING_KIND_MCPS:
-        return _rank_by_kind("mcp", tools, date_from, date_to)
+        return _rank_by_kind("mcp", tools, date_from, date_to, user_id)
     if kind == RANKING_KIND_MODELS:
-        return _rank_models(llm, date_from, date_to)
+        return _rank_models(llm, date_from, date_to, user_id)
     raise ValueError(f"unknown ranking kind: {kind!r}")
 
 
@@ -184,6 +194,7 @@ def _rank_by_kind(
     tools: list[ToolCallRecord],
     date_from: str | None,
     date_to: str | None,
+    user_id: str | None,
 ) -> list[RankedItem]:
     counts: dict[str, int] = {}
     errors: dict[str, int] = {}
@@ -192,6 +203,8 @@ def _rank_by_kind(
         if r.kind != target_kind:
             continue
         if not _within(r.ts, date_from, date_to):
+            continue
+        if user_id is not None and r.user_id != user_id:
             continue
         if not r.name:
             continue
@@ -211,12 +224,15 @@ def _rank_models(
     llm: list[LLMCallRecord],
     date_from: str | None,
     date_to: str | None,
+    user_id: str | None,
 ) -> list[RankedItem]:
     counts: dict[str, int] = {}
     durations: dict[str, list[float]] = {}
     tokens: dict[str, list[int]] = {}
     for r in llm:
         if not _within(r.ts, date_from, date_to):
+            continue
+        if user_id is not None and r.user_id != user_id:
             continue
         # Key on ``provider/model`` so two providers with the same
         # model name don't collapse in the ranking.
@@ -276,6 +292,7 @@ def aggregate_trend(
     *,
     date_from: str | None = None,
     date_to: str | None = None,
+    user_id: str | None = None,
     conversation_count_by_day: dict[str, int] | None = None,
 ) -> list[TrendPoint]:
     """One :class:`TrendPoint` per day in the requested range,
@@ -290,9 +307,13 @@ def aggregate_trend(
     for r in llm:
         if not _within(r.ts, date_from, date_to):
             continue
+        if user_id is not None and r.user_id != user_id:
+            continue
         day_llm.setdefault(_day(r.ts), []).append(r)
     for r in tools:
         if not _within(r.ts, date_from, date_to):
+            continue
+        if user_id is not None and r.user_id != user_id:
             continue
         day_tools.setdefault(_day(r.ts), []).append(r)
 

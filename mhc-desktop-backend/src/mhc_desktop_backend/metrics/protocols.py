@@ -80,6 +80,7 @@ class MetricsRepositoryProtocol(Protocol):
         date_from: str | None = None,
         date_to: str | None = None,
         *,
+        user_id: str | None = None,
         conversation_count_by_day: dict[str, int] | None = None,
     ) -> SummaryBucket: ...
     async def query_ranking(
@@ -89,12 +90,15 @@ class MetricsRepositoryProtocol(Protocol):
         date_to: str | None = None,
         page: int = 1,
         page_size: int = 10,
+        *,
+        user_id: str | None = None,
     ) -> RankingPage: ...
     async def query_trend(
         self,
         date_from: str | None = None,
         date_to: str | None = None,
         *,
+        user_id: str | None = None,
         conversation_count_by_day: dict[str, int] | None = None,
     ) -> list[TrendPoint]: ...
     async def close(self) -> None: ...

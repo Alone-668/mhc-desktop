@@ -18,11 +18,12 @@ Pagination is pushed down to the backend — ``query_ranking``
 applies the slice itself, so external adapters can ``LIMIT``/``OFFSET``
 on indexed columns and never materialise the full ranking.
 
-The dashboard is a local-only feature today (single user), so
-there is no auth layer here — matches the rest of the backend's
-local API. Adding multi-user auth would mean the same surface
-under a permission guard, identical to the gateway's metrics
-management endpoints.
+The dashboard is a local feature. Each endpoint scopes its query to
+``request.state.user.username`` (``""`` for anonymous/legacy), so an
+authenticated user only sees their own usage — no cross-user
+``?user_id=`` override is exposed. Sessions carry no user attribution
+yet, so the ``conversation_count`` card is machine-wide even when the
+token/tool cards are user-scoped.
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
+from mhc_desktop_backend.api._user_context import current_user_id
 from mhc_desktop_backend.metrics.protocols import (
     RANKING_KINDS,
     MetricsRepositoryProtocol,
@@ -104,6 +106,7 @@ async def get_metrics_summary(
     summary = await repo.query_summary(
         date_from=d_from,
         date_to=d_to,
+        user_id=current_user_id(request),
         conversation_count_by_day=conv,
     )
     return {
@@ -138,6 +141,7 @@ async def get_metrics_ranking(
         date_to=d_to,
         page=page,
         page_size=page_size,
+        user_id=current_user_id(request),
     )
     return {
         "kind": kind,
@@ -162,6 +166,7 @@ async def get_metrics_trend(
     points = await repo.query_trend(
         date_from=d_from,
         date_to=d_to,
+        user_id=current_user_id(request),
         conversation_count_by_day=conv,
     )
     return {

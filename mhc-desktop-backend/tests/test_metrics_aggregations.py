@@ -179,6 +179,119 @@ async def test_summary_uses_conversation_count_by_day() -> None:
     assert s.conversation_count == 4  # 3 + 1; 19 is out of range
 
 
+@pytest.mark.asyncio
+async def test_summary_user_id_scopes_llm_and_tool_counts() -> None:
+    llm = [
+        LLMCallRecord(
+            ts=_iso(2026, 8, 25, 10),
+            session_id="s1",
+            provider="p",
+            model="m",
+            prompt_tokens=10,
+            completion_tokens=5,
+            duration_ms=100.0,
+            status="ok",
+            user_id="alice",
+        ),
+        LLMCallRecord(
+            ts=_iso(2026, 8, 25, 11),
+            session_id="s2",
+            provider="p",
+            model="m",
+            prompt_tokens=20,
+            completion_tokens=10,
+            duration_ms=200.0,
+            status="ok",
+            user_id="bob",
+        ),
+    ]
+    tools = [
+        ToolCallRecord(
+            ts=_iso(2026, 8, 25),
+            session_id="s1",
+            kind="tool",
+            name="read_file",
+            status="ok",
+            user_id="alice",
+        ),
+        ToolCallRecord(
+            ts=_iso(2026, 8, 25),
+            session_id="s2",
+            kind="tool",
+            name="read_file",
+            status="ok",
+            user_id="bob",
+        ),
+    ]
+    # Scoped to alice → her records only.
+    alice = aggregate_summary(llm, tools, user_id="alice")
+    assert alice.llm_call_count == 1
+    assert alice.total_tokens == 15
+    assert alice.tool_call_count == 1
+    # None → all users (backward compatible).
+    all_users = aggregate_summary(llm, tools, user_id=None)
+    assert all_users.llm_call_count == 2
+    assert all_users.tool_call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_ranking_user_id_scopes_items() -> None:
+    tools = [
+        ToolCallRecord(
+            ts=_iso(2026, 8, 25),
+            session_id="s1",
+            kind="tool",
+            name="read_file",
+            status="ok",
+            user_id="alice",
+        ),
+        ToolCallRecord(
+            ts=_iso(2026, 8, 25),
+            session_id="s2",
+            kind="tool",
+            name="write_file",
+            status="ok",
+            user_id="bob",
+        ),
+        ToolCallRecord(
+            ts=_iso(2026, 8, 25),
+            session_id="s3",
+            kind="tool",
+            name="read_file",
+            status="ok",
+            user_id="bob",
+        ),
+    ]
+    items = rank_items(RANKING_KIND_TOOLS, [], tools, user_id="bob")
+    assert {i.key for i in items} == {"read_file", "write_file"}
+    assert items[0].key == "read_file"
+    assert items[0].count == 1
+
+
+@pytest.mark.asyncio
+async def test_trend_user_id_scopes_points() -> None:
+    tools = [
+        ToolCallRecord(
+            ts=_iso(2026, 8, 25),
+            session_id="s1",
+            kind="tool",
+            name="a",
+            status="ok",
+            user_id="alice",
+        ),
+        ToolCallRecord(
+            ts=_iso(2026, 8, 25),
+            session_id="s2",
+            kind="tool",
+            name="a",
+            status="ok",
+            user_id="bob",
+        ),
+    ]
+    points = aggregate_trend([], tools, user_id="alice")
+    assert points[0].tool_calls == 1
+
+
 # ── Ranking ────────────────────────────────────────────────────────────────
 
 

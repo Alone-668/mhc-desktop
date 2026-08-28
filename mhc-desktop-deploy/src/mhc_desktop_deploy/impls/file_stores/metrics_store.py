@@ -162,6 +162,7 @@ class JSONLMetricsRepository:
                             session_id=str(data.get("session_id", "")),
                             kind=str(data.get("kind", "tool")),
                             name=str(data.get("name", "")),
+                            user_id=str(data.get("user_id", "")),
                             duration_ms=float(data.get("duration_ms") or 0.0),
                             status=str(data.get("status", "ok")),
                             error=str(data.get("error", "")),
@@ -177,6 +178,7 @@ class JSONLMetricsRepository:
                             prompt_tokens=int(data.get("prompt_tokens") or 0),
                             completion_tokens=int(data.get("completion_tokens") or 0),
                             duration_ms=float(data.get("duration_ms") or 0.0),
+                            user_id=str(data.get("user_id", "")),
                             status=str(data.get("status", "ok")),
                             error=str(data.get("error", "")),
                             cancelled=bool(data.get("cancelled", False)),
@@ -189,6 +191,7 @@ class JSONLMetricsRepository:
         date_from: str | None = None,
         date_to: str | None = None,
         *,
+        user_id: str | None = None,
         conversation_count_by_day: dict[str, int] | None = None,
     ) -> SummaryBucket:
         llm, tools = self._iter_records()
@@ -197,6 +200,7 @@ class JSONLMetricsRepository:
             tools,
             date_from=date_from,
             date_to=date_to,
+            user_id=user_id,
             conversation_count_by_day=conversation_count_by_day,
         )
 
@@ -207,6 +211,8 @@ class JSONLMetricsRepository:
         date_to: str | None = None,
         page: int = 1,
         page_size: int = 10,
+        *,
+        user_id: str | None = None,
     ) -> RankingPage:
         if kind not in (
             RANKING_KIND_TOOLS,
@@ -216,7 +222,9 @@ class JSONLMetricsRepository:
         ):
             raise ValueError(f"unknown ranking kind: {kind!r}")
         llm, tools = self._iter_records()
-        items = rank_items(kind, llm, tools, date_from=date_from, date_to=date_to)
+        items = rank_items(
+            kind, llm, tools, date_from=date_from, date_to=date_to, user_id=user_id
+        )
         return paginate(items, page, page_size)
 
     async def query_trend(
@@ -224,6 +232,7 @@ class JSONLMetricsRepository:
         date_from: str | None = None,
         date_to: str | None = None,
         *,
+        user_id: str | None = None,
         conversation_count_by_day: dict[str, int] | None = None,
     ) -> list[TrendPoint]:
         llm, tools = self._iter_records()
@@ -232,6 +241,7 @@ class JSONLMetricsRepository:
             tools,
             date_from=date_from,
             date_to=date_to,
+            user_id=user_id,
             conversation_count_by_day=conversation_count_by_day,
         )
 
@@ -269,6 +279,7 @@ class InMemoryMetricsRepository:
         date_from: str | None = None,
         date_to: str | None = None,
         *,
+        user_id: str | None = None,
         conversation_count_by_day: dict[str, int] | None = None,
     ) -> SummaryBucket:
         with self._lock:
@@ -279,6 +290,7 @@ class InMemoryMetricsRepository:
             tools,
             date_from=date_from,
             date_to=date_to,
+            user_id=user_id,
             conversation_count_by_day=conversation_count_by_day,
         )
 
@@ -289,6 +301,8 @@ class InMemoryMetricsRepository:
         date_to: str | None = None,
         page: int = 1,
         page_size: int = 10,
+        *,
+        user_id: str | None = None,
     ) -> RankingPage:
         if kind not in (
             RANKING_KIND_TOOLS,
@@ -300,7 +314,9 @@ class InMemoryMetricsRepository:
         with self._lock:
             llm = list(self._llm)
             tools = list(self._tools)
-        items = rank_items(kind, llm, tools, date_from=date_from, date_to=date_to)
+        items = rank_items(
+            kind, llm, tools, date_from=date_from, date_to=date_to, user_id=user_id
+        )
         return paginate(items, page, page_size)
 
     async def query_trend(
@@ -308,6 +324,7 @@ class InMemoryMetricsRepository:
         date_from: str | None = None,
         date_to: str | None = None,
         *,
+        user_id: str | None = None,
         conversation_count_by_day: dict[str, int] | None = None,
     ) -> list[TrendPoint]:
         with self._lock:
@@ -318,6 +335,7 @@ class InMemoryMetricsRepository:
             tools,
             date_from=date_from,
             date_to=date_to,
+            user_id=user_id,
             conversation_count_by_day=conversation_count_by_day,
         )
 

@@ -181,6 +181,157 @@ async def test_jsonl_round_trip_preserves_all_fields(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_jsonl_user_id_round_trip_and_empty_dropped(tmp_path: Path) -> None:
+    repo = JSONLMetricsRepository(tmp_path / "m.jsonl")
+    await repo.record_llm_call(
+        LLMCallRecord(
+            ts=_iso(2026, 8, 25),
+            session_id="s1",
+            provider="p",
+            model="m",
+            prompt_tokens=1,
+            completion_tokens=2,
+            duration_ms=10.0,
+            status="ok",
+            user_id="alice",
+        )
+    )
+    await repo.record_llm_call(
+        LLMCallRecord(
+            ts=_iso(2026, 8, 25),
+            session_id="s2",
+            provider="p",
+            model="m",
+            prompt_tokens=1,
+            completion_tokens=2,
+            duration_ms=10.0,
+            status="ok",
+            user_id="",
+        )
+    )
+    lines = [
+        json.loads(ln)
+        for ln in (tmp_path / "m.jsonl").read_text(encoding="utf-8").splitlines()
+        if ln.strip()
+    ]
+    # Non-empty user_id is persisted; empty default is dropped.
+    assert lines[0]["user_id"] == "alice"
+    assert "user_id" not in lines[1]
+
+
+@pytest.mark.asyncio
+async def test_jsonl_query_summary_user_scopes(tmp_path: Path) -> None:
+    repo = JSONLMetricsRepository(tmp_path / "m.jsonl")
+    await repo.record_llm_call(
+        LLMCallRecord(
+            ts=_iso(2026, 8, 25),
+            session_id="s1",
+            provider="p",
+            model="m",
+            prompt_tokens=1,
+            completion_tokens=1,
+            duration_ms=1.0,
+            status="ok",
+            user_id="alice",
+        )
+    )
+    await repo.record_llm_call(
+        LLMCallRecord(
+            ts=_iso(2026, 8, 25),
+            session_id="s2",
+            provider="p",
+            model="m",
+            prompt_tokens=9,
+            completion_tokens=9,
+            duration_ms=9.0,
+            status="ok",
+            user_id="bob",
+        )
+    )
+    alice = await repo.query_summary(user_id="alice")
+    assert alice.llm_call_count == 1
+    assert alice.total_tokens == 2
+    both = await repo.query_summary(user_id=None)
+    assert both.llm_call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_jsonl_legacy_record_matches_anonymous_scope(tmp_path: Path) -> None:
+    """Pre-RFC rows have no ``user_id`` → default ``""`` and only
+    match a ``user_id=""`` scope."""
+    repo = JSONLMetricsRepository(tmp_path / "m.jsonl")
+    await repo.record_llm_call(
+        LLMCallRecord(
+            ts=_iso(2026, 8, 25),
+            session_id="s1",
+            provider="p",
+            model="m",
+            prompt_tokens=1,
+            completion_tokens=1,
+            duration_ms=1.0,
+            status="ok",
+            user_id="alice",
+        )
+    )
+    # Hand-write a legacy line with no user_id field.
+    with open(tmp_path / "m.jsonl", "a", encoding="utf-8") as f:
+        f.write(
+            json.dumps(
+                {
+                    "type": "llm",
+                    "ts": _iso(2026, 8, 25),
+                    "session_id": "s2",
+                    "provider": "p",
+                    "model": "m",
+                    "prompt_tokens": 5,
+                    "completion_tokens": 5,
+                    "duration_ms": 5.0,
+                    "status": "ok",
+                }
+            )
+            + "\n"
+        )
+    anon = await repo.query_summary(user_id="")
+    assert anon.llm_call_count == 1
+    assert anon.total_tokens == 10
+
+
+@pytest.mark.asyncio
+async def test_in_memory_query_summary_user_scopes() -> None:
+    repo = InMemoryMetricsRepository()
+    await repo.record_llm_call(
+        LLMCallRecord(
+            ts=_iso(2026, 8, 25),
+            session_id="s1",
+            provider="p",
+            model="m",
+            prompt_tokens=1,
+            completion_tokens=1,
+            duration_ms=1.0,
+            status="ok",
+            user_id="alice",
+        )
+    )
+    await repo.record_llm_call(
+        LLMCallRecord(
+            ts=_iso(2026, 8, 25),
+            session_id="s2",
+            provider="p",
+            model="m",
+            prompt_tokens=1,
+            completion_tokens=1,
+            duration_ms=1.0,
+            status="ok",
+            user_id="bob",
+        )
+    )
+    alice = await repo.query_summary(user_id="alice")
+    assert alice.llm_call_count == 1
+    both = await repo.query_summary(user_id=None)
+    assert both.llm_call_count == 2
+
+
+@pytest.mark.asyncio
 async def test_jsonl_ranking_rejects_unknown_kind(tmp_path: Path) -> None:
     repo = JSONLMetricsRepository(tmp_path / "m.jsonl")
     with pytest.raises(ValueError, match="unknown ranking kind"):
