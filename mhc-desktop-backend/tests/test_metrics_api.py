@@ -204,6 +204,127 @@ def test_summary_aggregates_llm_tool_skill_mcp(env) -> None:
     assert body["prompt_tokens"] == 100
 
 
+# ── User scoping ────────────────────────────────────────────────────────────
+
+
+def test_summary_scopes_to_current_user_anonymous(env) -> None:
+    """No logged-in user (auth=None) → scope is ``""``: only
+    anonymous / legacy records are visible, other users' are hidden."""
+    _inject_metrics(
+        env["metrics_file"],
+        [
+            {
+                "type": "llm",
+                "ts": _iso(2026, 8, 25),
+                "session_id": "s1",
+                "provider": "p",
+                "model": "m",
+                "prompt_tokens": 100,
+                "completion_tokens": 0,
+                "duration_ms": 50.0,
+                "status": "ok",
+                "user_id": "alice",
+            },
+            {
+                "type": "llm",
+                "ts": _iso(2026, 8, 25),
+                "session_id": "s2",
+                "provider": "p",
+                "model": "m",
+                "prompt_tokens": 7,
+                "completion_tokens": 3,
+                "duration_ms": 10.0,
+                "status": "ok",
+                "user_id": "",
+            },
+        ],
+    )
+    r = env["client"].get(
+        "/api/v1/metrics/summary?date_from=2026-08-25&date_to=2026-08-25"
+    )
+    body = r.json()
+    assert body["llm_call_count"] == 1
+    assert body["total_tokens"] == 10  # only the anonymous record
+
+
+def test_summary_scopes_to_request_state_user(env) -> None:
+    """With a logged-in principal on ``request.state.user``, the API
+    defaults to that user and hides other users' records."""
+    from fastapi import Request
+    from starlette.middleware.base import BaseHTTPMiddleware
+
+    from mhc_desktop_backend.protocols import AuthUser
+
+    class _InjectUser(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            request.state.user = AuthUser(
+                id="u2", username="bob", display_name="Bob"
+            )
+            return await call_next(request)
+
+    env["app"].add_middleware(_InjectUser)
+
+    _inject_metrics(
+        env["metrics_file"],
+        [
+            {
+                "type": "llm",
+                "ts": _iso(2026, 8, 25),
+                "session_id": "s1",
+                "provider": "p",
+                "model": "m",
+                "prompt_tokens": 5,
+                "completion_tokens": 5,
+                "duration_ms": 1.0,
+                "status": "ok",
+                "user_id": "alice",
+            },
+            {
+                "type": "llm",
+                "ts": _iso(2026, 8, 25),
+                "session_id": "s2",
+                "provider": "p",
+                "model": "m",
+                "prompt_tokens": 20,
+                "completion_tokens": 10,
+                "duration_ms": 2.0,
+                "status": "ok",
+                "user_id": "bob",
+            },
+            {
+                "type": "tool",
+                "ts": _iso(2026, 8, 25),
+                "session_id": "s2",
+                "kind": "tool",
+                "name": "read_file",
+                "status": "ok",
+                "user_id": "bob",
+            },
+            {
+                "type": "tool",
+                "ts": _iso(2026, 8, 25),
+                "session_id": "s1",
+                "kind": "tool",
+                "name": "read_file",
+                "status": "ok",
+                "user_id": "alice",
+            },
+        ],
+    )
+    r = env["client"].get(
+        "/api/v1/metrics/summary?date_from=2026-08-25&date_to=2026-08-25"
+    )
+    body = r.json()
+    assert body["llm_call_count"] == 1  # bob only
+    assert body["total_tokens"] == 30
+    assert body["tool_call_count"] == 1  # bob's tool call only
+
+    rk = env["client"].get(
+        "/api/v1/metrics/ranking?kind=tools&date_from=2026-08-25&date_to=2026-08-25"
+    )
+    assert rk.json()["total"] == 1
+
+
 def test_ranking_pagination_slices_server_side(env) -> None:
     events = [
         {
