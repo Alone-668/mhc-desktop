@@ -1,0 +1,13 @@
+[project]
+name = "mhc-market-backend"
+version = "0.1.0"
+description = "Standalone skill market service for mhc-desktop (public registry + personal cloud space)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.34",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
