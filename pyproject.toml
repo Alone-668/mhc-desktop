@@ -7,11 +7,13 @@ requires-python = ">=3.12"
 [tool.uv.sources]
 mhc-desktop-backend = { workspace = true }
 mhc-desktop-deploy = { workspace = true }
+mhc-market-backend = { workspace = true }
 
 [tool.uv.workspace]
 members = [
     "mhc-desktop-backend",
     "mhc-desktop-deploy",
+    "mhc-market-backend",
 ]
 
 [[tool.uv.index]]
@@ -26,3 +28,6 @@ dev = [
     "pytest-asyncio>=0.24",
     "httpx>=0.28",
 ]
+
+[tool.pyright]
+include = ["mhc-desktop-backend/src", "mhc-desktop-deploy/src", "mhc-market-backend/src"]

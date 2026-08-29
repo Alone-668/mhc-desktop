@@ -7,6 +7,7 @@ members = [
     "mhc-desktop",
     "mhc-desktop-backend",
     "mhc-desktop-deploy",
+    "mhc-market-backend",
 ]
 
 [[package]]
@@ -367,6 +368,21 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "mhc-desktop-backend", editable = "mhc-desktop-backend" }]
+
+[[package]]
+name = "mhc-market-backend"
+version = "0.1.0"
+source = { editable = "mhc-market-backend" }
+dependencies = [
+    { name = "fastapi" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "uvicorn", specifier = ">=0.34" },
+]
 
 [[package]]
 name = "minimal-harness"
