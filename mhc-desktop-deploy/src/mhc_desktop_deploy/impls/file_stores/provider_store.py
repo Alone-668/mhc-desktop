@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from mhc_desktop_backend.protocol_models import Provider
+
 from mhc_desktop_deploy.impls.file_stores.paths import PROVIDERS_FILE
 
 logger = logging.getLogger("mhc_desktop_backend")

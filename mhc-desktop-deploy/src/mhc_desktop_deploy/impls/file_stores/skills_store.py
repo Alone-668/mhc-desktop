@@ -22,6 +22,7 @@ This file is small (a few hundred bytes) and re-read on every call.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import io
 import json
 import logging
@@ -59,7 +60,6 @@ SKILL_FILE_SUFFIXES = {
     ".csv",
     ".toml",
 }
-
 
 class SkillStore:
     """Manage skills on disk.
@@ -148,11 +148,14 @@ class SkillStore:
         *,
         origin: str = "imported",
         overwrite: bool = False,
+        slug: str | None = None,
     ) -> Skill:
         """Copy a folder containing SKILL.md into the skills dir.
 
         ``source`` must contain a ``SKILL.md`` file with valid frontmatter.
-        The destination slug is taken from the frontmatter name; if that
+        The destination slug is taken from the frontmatter name; pass
+        ``slug`` to override it (e.g. to let same-named skills from
+        different authors coexist under distinct folder names). If that
         already exists and ``overwrite`` is False, a SkillError is raised
         so the caller can decide what to do.
         """
@@ -171,20 +174,20 @@ class SkillStore:
         if errors:
             raise SkillError("SKILL.md frontmatter is invalid: " + "; ".join(errors))
 
-        slug = slugify(fm.name)
-        if not slug:
+        target_slug = slug or slugify(fm.name)
+        if not target_slug:
             raise SkillError("skill name cannot be empty")
-        target = self._dir / slug
+        target = self._dir / target_slug
 
         async with self._write_lock:
             if target.exists() and not overwrite:
-                raise SkillError(f"skill '{slug}' already exists")
+                raise SkillError(f"skill '{target_slug}' already exists")
             if target.exists():
                 shutil.rmtree(target)
             shutil.copytree(source, target)
 
             state = self._load_state()
-            entry = state.setdefault(slug, {})
+            entry = state.setdefault(target_slug, {})
             entry.update(
                 {
                     "enabled": entry.get("enabled", True),
@@ -198,8 +201,8 @@ class SkillStore:
             )
             self._save_state(state)
 
-        logger.info("installed skill '%s' from %s", slug, source)
-        return await self.get(slug)  # type: ignore[return-value]
+        logger.info("installed skill '%s' from %s", target_slug, source)
+        return await self.get(target_slug)  # type: ignore[return-value]
 
     async def delete(self, slug: str) -> None:
         path = self._dir / slug
@@ -292,8 +295,19 @@ class SkillStore:
                 zf.write(p, arcname=f"{slug}/{rel.as_posix()}")
         return buf.getvalue()
 
-    async def import_zip(self, data: bytes, *, origin: str = "imported") -> Skill:
-        """Install a skill from a zip bundle (export format or downloaded)."""
+    async def import_zip(
+        self,
+        data: bytes,
+        *,
+        origin: str = "imported",
+        overwrite: bool = False,
+        slug: str | None = None,
+    ) -> Skill:
+        """Install a skill from a zip bundle (export format or downloaded).
+
+        Pass ``slug`` to install under a specific folder name instead of
+        the SKILL.md-derived slug (lets same-named skills coexist).
+        """
         buf = io.BytesIO(data)
         try:
             with zipfile.ZipFile(buf) as zf:
@@ -335,7 +349,39 @@ class SkillStore:
                     target.parent.mkdir(parents=True, exist_ok=True)
                     with zf.open(name) as src, target.open("wb") as dst:
                         shutil.copyfileobj(src, dst)
-            return await self.install_from_folder(tmp_root, origin=origin)
+            return await self.install_from_folder(
+                tmp_root, origin=origin, overwrite=overwrite, slug=slug
+            )
+
+    async def content_sha(self, slug: str) -> str:
+        """Deterministic content fingerprint: sha256 over each file's
+        relative path + bytes, sorted. Never changes with zip metadata
+        (timestamps), so it is comparable across devices and with the
+        market service's stored ``sha``."""
+        path = self._dir / slug
+        if not path.is_dir():
+            raise SkillError(f"skill '{slug}' not found")
+        h = hashlib.sha256()
+        for p in sorted(path.rglob("*")):
+            if not p.is_file():
+                continue
+            h.update(p.relative_to(path).as_posix().encode())
+            h.update(b"\0")
+            h.update(p.read_bytes())
+            h.update(b"\0")
+        return h.hexdigest()
+
+    async def get_state(self, slug: str) -> dict[str, Any]:
+        """Raw state entry for a skill (may be empty if unknown)."""
+        return dict(self._load_state().get(slug, {}))
+
+    async def patch_state(self, slug: str, patch: dict[str, Any]) -> None:
+        """Shallow-merge ``patch`` into the skill's state entry."""
+        async with self._write_lock:
+            state = self._load_state()
+            entry = state.setdefault(slug, {})
+            entry.update(patch)
+            self._save_state(state)
 
     # ── Internal helpers ────────────────────────────────────────────
 
@@ -367,6 +413,7 @@ class SkillStore:
             path=str(path),
             version=fm.version,
             license=fm.license,
+            icon=str(fm.extra.get("icon") or ""),
             created_at=entry.get("created_at", ""),
             updated_at=entry.get("updated_at", ""),
         )
@@ -401,4 +448,4 @@ class SkillStore:
         Defined so the reference impl satisfies
         :class:`mhc_desktop_backend.protocols.SkillStoreProtocol`.
         """
-        return None
+        return

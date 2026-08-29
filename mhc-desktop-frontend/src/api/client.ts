@@ -268,6 +268,7 @@ export interface ChatRequest {
   model?: string
   messages: ChatRequestMessage[]
   skills?: string[]  // active skill slugs for this message
+  skill_authors?: Record<string, string>  // slug → market author (for same-name disambiguation)
   mcp?: string[]    // active MCP slugs for this message
   /** Session id echoed back on every SSE event so the frontend can
    *  route events into the right consumer when multiple sessions
@@ -283,20 +284,85 @@ export interface ChatRequest {
 
 export interface Skill {
   slug: string
+  sha?: string  // content fingerprint (list endpoint)
   name: string
   description: string
   files: string[]
   enabled: boolean
-  origin: "bundled" | "imported" | "local"
+  origin: "bundled" | "imported" | "local" | "market"
   source_path: string
   version: string
   license: string
+  icon?: string
   created_at: string
   updated_at: string
 }
 
 export interface SkillDetail extends Skill {
   body: string  // markdown body of SKILL.md (no frontmatter)
+}
+
+// ── Skill market ─────────────────────────────────────────────────────────
+
+export interface MarketSkill {
+  slug: string
+  display_name: string
+  description: string
+  category: string
+  author: string
+  icon?: string
+  sha: string
+  size: number
+  downloads: number
+  updated_at: number
+  published_at: number
+}
+
+export interface MarketStory {
+  id: string
+  title: string
+  author: string
+  skill_slug: string
+  content: string
+  created_at: number
+}
+
+export interface MarketFile {
+  path: string
+  content: string
+}
+
+export type SyncAction =
+  | "up-to-date"
+  | "push"
+  | "pull"
+  | "conflict"
+  | "cloud-deleted"
+
+export interface SyncPlan {
+  actions: Record<
+    string,
+    {
+      action: SyncAction
+      local_sha: string | null
+      remote_sha: string | null
+      base_sha: string | null
+    }
+  >
+  conflicts: string[]
+  authors?: Record<string, string>  // cloud copy slug → market entry author
+  market_slugs?: Record<string, string>  // cloud copy slug → matched market key
+  delisted?: Record<string, boolean>  // cloud copy slug → matched entry delisted
+  local_set_sha?: string
+  remote_set_sha?: string
+  in_sync?: boolean
+}
+
+export interface SyncResult {
+  pushed: string[]
+  pulled: string[]
+  conflicts: string[]
+  errors: { slug: string; detail: string }[]
 }
 
 // ── MCP ────────────────────────────────────────────────────────────────────
@@ -678,6 +744,90 @@ export const api = {
     authedFetch(`${API_BASE}/api/v1/skills/${encodeURIComponent(slug)}`, {
       method: "DELETE",
     }).then(j<undefined>),
+
+  // ── Skill market ──────────────────────────────────────────────────────
+
+  listMarketSkills: (
+    q = "",
+    category = "",
+    sort = "downloads",
+    featured = false,
+  ) =>
+    authedFetch(
+      `${API_BASE}/api/v1/market/skills?q=${encodeURIComponent(q)}&category=${encodeURIComponent(category)}&sort=${sort}&featured=${featured}`,
+    ).then(j<MarketSkill[]>),
+
+  publishSkill: (slug: string, category: string) =>
+    authedFetch(
+      `${API_BASE}/api/v1/market/skills/${encodeURIComponent(slug)}/publish`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ category }),
+      },
+    ).then(j<MarketSkill>),
+
+  delistMarketSkill: (marketKey: string) =>
+    authedFetch(
+      `${API_BASE}/api/v1/market/skills/${encodeURIComponent(marketKey)}`,
+      { method: "DELETE" },
+    ).then(j<undefined>),
+
+  getMarketSkillFiles: (slug: string) =>
+    authedFetch(
+      `${API_BASE}/api/v1/market/skills/${encodeURIComponent(slug)}/files`,
+    ).then(j<MarketFile[]>),
+
+  addMarketSkill: (slug: string) =>
+    authedFetch(
+      `${API_BASE}/api/v1/market/skills/${encodeURIComponent(slug)}/add`,
+      { method: "POST" },
+    ).then(j<{ skill: Skill; cloud_backup: boolean }>),
+
+  syncPlan: () =>
+    authedFetch(`${API_BASE}/api/v1/market/sync`).then(j<SyncPlan>),
+
+  syncExecute: () =>
+    authedFetch(`${API_BASE}/api/v1/market/sync`, {
+      method: "POST",
+    }).then(j<SyncResult>),
+
+  resolveConflict: (slug: string, choice: "local" | "remote") =>
+    authedFetch(`${API_BASE}/api/v1/market/sync/resolve`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ slug, choice }),
+    }).then(j<{ slug: string; resolved: string }>),
+
+  listMarketStories: () =>
+    authedFetch(`${API_BASE}/api/v1/market/stories`).then(j<MarketStory[]>),
+
+  deleteMarketCopy: (slug: string) =>
+    authedFetch(
+      `${API_BASE}/api/v1/market/me/skills/${encodeURIComponent(slug)}`,
+      { method: "DELETE" },
+    ).then(j<undefined>),
+
+  reportMarketUsage: () =>
+    authedFetch(`${API_BASE}/api/v1/market/usage/report`, {
+      method: "POST",
+    }).then(j<{ ok: boolean; recorded: number }>),
+
+  getMarketStory: (id: string) =>
+    authedFetch(
+      `${API_BASE}/api/v1/market/stories/${encodeURIComponent(id)}`,
+    ).then(j<MarketStory>),
+
+  createMarketStory: (body: {
+    title: string
+    skill_slug: string
+    content: string
+  }) =>
+    authedFetch(`${API_BASE}/api/v1/market/stories`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(j<MarketStory>),
 
   // ── MCP ──────────────────────────────────────────────────────────────────
 

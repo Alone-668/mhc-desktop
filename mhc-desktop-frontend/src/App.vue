@@ -4,6 +4,7 @@ import { RouterView, useRoute, useRouter } from "vue-router"
 import AppNav from "./components/AppNav.vue"
 import ConfirmModal from "./components/ConfirmModal.vue"
 import LoadingSplash from "./components/LoadingSplash.vue"
+import AppToast from "./components/AppToast.vue"
 import Onboarding from "./components/Onboarding.vue"
 import SessionList from "./components/SessionList.vue"
 import TitleBar from "./components/TitleBar.vue"
@@ -11,7 +12,32 @@ import { useAuthStore } from "./stores/auth"
 import { useOnboardingStore } from "./stores/onboarding"
 import { useSessionsStore } from "./stores/sessions"
 import { useSessionStreamsStore } from "./stores/sessionStreams"
+import { api } from "./api/client"
+import { startSyncPolling, stopSyncPolling } from "./lib/marketSync"
 import { t } from "./i18n"
+
+// ── Usage reporter ──
+// Independent of sync: every N minutes the desktop aggregates local
+// skill usage (loads from the metrics store + a downloads ledger) and
+// posts it to the market service so the cloud ops dashboard stays warm.
+let usageReporterStarted = false
+function startUsageReporter() {
+  if (usageReporterStarted) return
+  usageReporterStarted = true
+  const report = async () => {
+    try {
+      await api.reportMarketUsage()
+    } catch {
+      /* best-effort, non-blocking */
+    }
+  }
+  report()
+  setInterval(report, 10 * 60 * 1000)
+  // 应用级自动同步轮询：45s 检查计划，无冲突 push/pull 自动执行。
+  // 放在应用级（而非市场页 tab）保证切页后仍会同步。
+  startSyncPolling(45_000)
+  onUnmounted(() => stopSyncPolling())
+}
 
 const router = useRouter()
 const route = useRoute()
@@ -85,6 +111,9 @@ async function _openSession(sessionId: string) {
 
 let completeHookInstalled = false
 onMounted(() => {
+  // ── usage reporter: independent timer, forwards local skill usage
+  // to the cloud ops dashboard (decoupled from sync). ──
+  startUsageReporter()
   // The bus is the only place that knows when a stream ends; register
   // once (HMR remounts would otherwise stack listeners).
   if (completeHookInstalled) return
@@ -191,6 +220,13 @@ const LS_RIGHT = "mhc.layout.rightOpen"
 const leftOpen = ref(true)
 const rightOpen = ref(true)
 
+// Market pages own the full width — the sessions sidebar is chat
+// chrome and just wastes space there. (Not collapsed: fully unmounted,
+// so the collapse toggle never persists it.)
+const isMarketRoute = computed(
+  () => route.path.startsWith("/skills") || route.path.startsWith("/market"),
+)
+
 function safeRead(key: string): string | null {
   try {
     return localStorage.getItem(key)
@@ -255,7 +291,7 @@ watch(rightOpen, (v) => safeWrite(LS_RIGHT, v ? "1" : "0"))
         <RouterView />
       </main>
 
-      <template v-if="!isLoginRoute">
+      <template v-if="!isLoginRoute && !isMarketRoute">
       <!-- Right panel: [content][toggle] -->
       <aside
         class="panel right"
@@ -324,6 +360,8 @@ watch(rightOpen, (v) => safeWrite(LS_RIGHT, v ? "1" : "0"))
          before the Electron process quits. Prevents the user from
          clicking anything mid-cancel. -->
     <LoadingSplash v-if="exiting" :hint="exitHint" />
+
+    <AppToast />
   </div>
 </template>
 

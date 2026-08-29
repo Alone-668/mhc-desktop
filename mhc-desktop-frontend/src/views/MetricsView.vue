@@ -159,6 +159,15 @@ function fmtPct(n: number): string {
   return (n * 100).toFixed(1) + "%"
 }
 
+// 技能排行里单项占总使用量的比例（0-1），用于占比列 + 进度条。
+function skillShare(name: string): number {
+  const page = rankings.value.skills
+  const total = page?.total ?? 0
+  const item = page?.items.find((i) => i.name === name)
+  if (!item || total <= 0) return 0
+  return item.count / total
+}
+
 function fmtMs(n: number): string {
   if (!Number.isFinite(n) || n <= 0) return "—"
   if (n < 1000) return Math.round(n) + " ms"
@@ -567,6 +576,18 @@ const anyData = computed(() => {
           </article>
           <article class="card">
             <div class="card-label">
+              {{ t("metrics.cards.todaySkillCalls") }}
+            </div>
+            <div class="card-value">{{
+              fmtInt(summaryToday?.skill_call_count ?? 0)
+            }}</div>
+            <div class="card-sub">
+              {{ t("metrics.cards.totalSkillCalls") }} ·
+              {{ fmtInt(summaryAll?.skill_call_count ?? 0) }}
+            </div>
+          </article>
+          <article class="card">
+            <div class="card-label">
               {{ t("metrics.cards.avgTokensPerCall") }}
             </div>
             <div class="card-value">
@@ -790,12 +811,23 @@ const anyData = computed(() => {
               <tr>
                 <th>{{ t("metrics.col.name") }}</th>
                 <th class="num">{{ t("metrics.col.count") }}</th>
+                <th class="num">{{ t("metrics.col.share") }}</th>
+                <th class="num">{{ t("metrics.col.errors") }}</th>
+                <th class="num">{{ t("metrics.col.errorRate") }}</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="it in rankings.skills.items" :key="it.name">
                 <td class="ellipsis">{{ it.name }}</td>
                 <td class="num">{{ it.count }}</td>
+                <td class="num share-cell">
+                  <span class="share-bar">
+                    <span class="share-fill" :style="{ width: (skillShare(it.name) * 100).toFixed(1) + '%' }" />
+                  </span>
+                  <span class="share-pct">{{ fmtPct(skillShare(it.name)) }}</span>
+                </td>
+                <td class="num">{{ it.error_count }}</td>
+                <td class="num">{{ fmtPct(it.error_rate) }}</td>
               </tr>
             </tbody>
           </table>
@@ -1111,6 +1143,29 @@ tbody tr:last-child td {
 }
 .num {
   text-align: right;
+}
+.share-cell {
+  min-width: 110px;
+}
+.share-bar {
+  display: inline-block;
+  vertical-align: middle;
+  width: 56px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg-hover, rgba(127,127,127,.15));
+  overflow: hidden;
+  margin-right: 8px;
+}
+.share-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+.share-pct {
+  font-size: 11.5px;
+  color: var(--text-mid);
 }
 .models-table {
   font-size: 12.5px;

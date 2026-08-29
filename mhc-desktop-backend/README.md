@@ -21,6 +21,31 @@ Backend HTTP/SSE service for the mhc-desktop-backend Skill/MCP client. See
 | `GET`  | `/api/v1/providers/presets` | Built-in preset templates |
 | `POST` | `/api/v1/chat` | SSE chat — streams `event: chunk` / `event: done` / `event: error` |
 | `GET`  | `/api/v1/onboarding` | First-run tour cards (centered / media-text / media-top), localised by `Accept-Language`; full i18n dicts included |
+| `GET`  | `/api/v1/market/skills` | Skill market: public registry list (`?q=&category=&sort=`) |
+| `GET`  | `/api/v1/market/skills/{slug}` | Market skill detail |
+| `POST` | `/api/v1/market/skills/{slug}/add` | Pull a market skill into the local store + cloud backup (`{"overwrite":true}` to replace local changes) |
+| `POST` | `/api/v1/market/skills/{slug}/publish` | Publish a local skill to the market (author-only overwrite) |
+| `GET/POST` | `/api/v1/market/sync` | sha-based sync plan / execution between local skills and the user's cloud space |
+| `POST` | `/api/v1/market/sync/resolve` | Resolve a sync conflict (`{"slug":..., "choice":"local\|remote"}`) |
+
+### Skill market
+
+Backed by the standalone `mhc-market-backend` service (own repo dir,
+port 8766 by default). The kernel proxies `/api/v1/market/*` and signs
+requests with a shared HMAC secret; the market service has no accounts
+— identity is the kernel's authenticated user.
+
+Sync model: every skill has a deterministic content sha (files, not
+zip bytes). The kernel stores `base_sha` (last-synced cloud sha) per
+skill; comparing local/remote/base yields push / pull / conflict.
+Pushes are CAS (`base_sha`) so two devices can't silently clobber each
+other.
+
+Dev env (both services): `MHC_MARKET_URL=http://127.0.0.1:8766`,
+`MHC_MARKET_SECRET=<shared>`, then `uv run python -m
+mhc_market_backend` (needs `MHC_MARKET_SECRET` + `MHC_MARKET_DATA`).
+When `MHC_MARKET_URL` is unset the market API 503s and the UI hides
+the market tab.
 
 ## Provider config
 

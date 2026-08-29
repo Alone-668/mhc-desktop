@@ -202,7 +202,10 @@ def test_coerce_then_attach_preserves_files_metadata():
         }
     ]
     coerced = _COERCE(raw)
-    assert "files" not in coerced[0]
+    # Metadata is spliced during the same pass as coercion (filtering a
+    # malformed message would otherwise shift zip-based re-pairing); the
+    # legacy attach step is a no-op and must not drop it.
+    assert coerced[0]["files"] == [{"name": "a.txt", "path": "/a", "size": 1}]
     _ATTACH(coerced, raw)
     assert coerced[0]["files"] == [{"name": "a.txt", "path": "/a", "size": 1}]
     # After assembly, the file paths show up in the augmented content
@@ -210,6 +213,40 @@ def test_coerce_then_attach_preserves_files_metadata():
     runtime = _ASSEMBLE(coerced)
     assert "path: /a" in runtime[0]["content"]
     assert runtime[0]["files"] == [{"name": "a.txt", "path": "/a", "size": 1}]
+
+
+def test_coerce_drops_empty_assistant_keeps_tool_calls():
+    """Empty assistant messages (no content, no tool_calls) are the
+    400 'content or tool_calls must be set' trigger — they must be
+    filtered, while an assistant that carries tool_calls (even with
+    empty text) survives WITH its tool_calls, and tool messages keep
+    their tool_call_id. No position-shift bugs from filtering."""
+    raw = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": ""},  # dirty history
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{"id": "call_1", "function": {"name": "f", "arguments": "{}"}}],
+        },
+        {"role": "tool", "tool_call_id": "call_1", "content": "ok"},
+        {"role": "user", "content": "next"},
+    ]
+    out = _COERCE(raw)
+    assert len(out) == 4
+    # the dirty empty assistant is gone
+    assert not any(
+        m["role"] == "assistant"
+        and not str(m.get("content", "")).strip()
+        and not m.get("tool_calls")
+        for m in out
+    )
+    # the tool-calling assistant kept its tool_calls, paired correctly
+    asst = [m for m in out if m["role"] == "assistant"][0]
+    assert asst.get("tool_calls") == [{"id": "call_1", "function": {"name": "f", "arguments": "{}"}}]
+    # the tool message kept its tool_call_id
+    tool = [m for m in out if m["role"] == "tool"][0]
+    assert tool.get("tool_call_id") == "call_1"
 
 
 def test_multiple_users_with_files_all_get_assembled():

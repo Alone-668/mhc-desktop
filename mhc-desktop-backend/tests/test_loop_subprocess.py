@@ -10,6 +10,15 @@ always return a ProactorEventLoop; these tests pin that behavior.
 from __future__ import annotations
 
 import asyncio
+import sys
+
+import pytest
+
+pytestmark = pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="ProactorEventLoop is Windows-only; on POSIX the factory "
+    "returns the default selector loop",
+)
 
 
 def test_proactor_loop_factory_returns_proactor_loop() -> None:

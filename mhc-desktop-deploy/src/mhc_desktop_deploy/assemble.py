@@ -15,7 +15,6 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI
-
 from mhc_desktop_backend import create_app
 from mhc_desktop_backend.config import Config, load_config
 
@@ -74,9 +73,9 @@ def build_default_app(**overrides: object) -> FastAPI:
     # package that only includes what the customer actually uses.
     from mhc_desktop_deploy.impls.file_stores import ensure_dirs
     from mhc_desktop_deploy.impls.file_stores._defaults import (
-        default_metrics_repo,
         default_mcp_manager,
         default_mcp_store,
+        default_metrics_repo,
         default_prefs_store,
         default_provider_store,
         default_session_store,
@@ -155,6 +154,15 @@ def build_default_app(**overrides: object) -> FastAPI:
         kwargs["meta"] = base_meta
 
     kwargs.update(overrides)
+    # Skill market: env-driven wiring, no env = market disabled (the
+    # kernel's /api/v1/market/* 503s and the UI hides it).
+    market_url = os.environ.get("MHC_MARKET_URL", "").strip()
+    if market_url and "market_base_url" not in overrides:
+        kwargs["market_base_url"] = market_url
+        kwargs["market_secret"] = os.environ.get("MHC_MARKET_SECRET", "").strip()
+        # Local usage ledger (downloads) lives next to the skills state.
+        if "market_usage_file" not in overrides and factory_data_dir is not None:
+            kwargs["market_usage_file"] = Path(factory_data_dir) / "market-usage.json"
     app = create_app(**kwargs)  # type: ignore[arg-type]
     logger.info(
         "mhc-desktop deploy wired (data_dir=%s, debug=%s)",

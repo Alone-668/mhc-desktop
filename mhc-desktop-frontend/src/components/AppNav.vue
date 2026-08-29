@@ -33,9 +33,9 @@ const appMeta = useAppMetaStore()
       <Icon name="chart" />
       <span>{{ t("nav.metrics") }}</span>
     </RouterLink>
-    <RouterLink to="/skills" class="item" active-class="active">
+    <RouterLink to="/market" class="item" active-class="active">
       <Icon name="package" />
-      <span>{{ t("nav.skills") }}</span>
+      <span>{{ t("nav.market") }}</span>
     </RouterLink>
     <RouterLink to="/mcp" class="item" active-class="active">
       <Icon name="server" />
