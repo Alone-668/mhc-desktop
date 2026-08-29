@@ -285,4 +285,4 @@ class MCPStore:
         Defined so the reference impl satisfies
         :class:`mhc_desktop_backend.protocols.MCPStoreProtocol`.
         """
-        return None
+        return

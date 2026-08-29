@@ -21,9 +21,9 @@ import os
 from typing import Any
 
 import uvicorn
-
 from mhc_desktop_backend import __version__
 from mhc_desktop_backend.config import load_config
+
 from mhc_desktop_deploy._logging import build_log_config, make_log_formatter
 from mhc_desktop_deploy.assemble import build_default_app
 

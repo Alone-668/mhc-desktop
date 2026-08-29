@@ -43,6 +43,7 @@ class Skill:
     path: str = ""
     version: str = ""
     license: str = ""
+    icon: str = ""  # from SKILL.md frontmatter ``icon:``; empty = letter avatar
     created_at: str = ""
     updated_at: str = ""
 

@@ -70,4 +70,4 @@ def build_log_config(level: str = "INFO") -> dict:
     }
 
 
-__all__ = ["make_log_formatter", "build_log_config"]
+__all__ = ["build_log_config", "make_log_formatter"]

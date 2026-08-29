@@ -38,7 +38,11 @@ def _proactor_loop_factory(*args: Any, **kwargs: Any) -> asyncio.AbstractEventLo
     factories return a class instead — we must not). ``*args/**kwargs``
     keep us compatible with both call shapes.
     """
-    return asyncio.ProactorEventLoop()
+    import sys
+
+    if sys.platform == "win32":
+        return asyncio.ProactorEventLoop()
+    return asyncio.new_event_loop()  # POSIX: default selector loop is fine
 
 
 # Asia/Shanghai never observes DST — a fixed +08:00 offset is exact and

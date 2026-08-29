@@ -52,7 +52,7 @@ class StreamRegistry:
                 existing.cancelled = True
                 try:
                     await asyncio.wait_for(existing.done, timeout=2.0)
-                except (asyncio.TimeoutError, asyncio.CancelledError):
+                except (TimeoutError, asyncio.CancelledError):
                     pass
             loop = asyncio.get_event_loop()
             stream = SessionStream(

@@ -185,7 +185,9 @@ def _resolve_system_prompt_base(override: str | None) -> str:
     return str(override)
 
 
-def _build_skill_section(enabled_skills: list[Any]) -> str:
+def _build_skill_section(
+    enabled_skills: list[Any], skill_authors: dict[str, str] | None = None
+) -> str:
     """Render the per-request ``## Skills`` block.
 
     Lists every skill whose ``enabled`` flag is true: one bullet per
@@ -226,10 +228,14 @@ def _build_skill_section(enabled_skills: list[Any]) -> str:
         # the section's formatting.
         safe_desc = (desc or "").replace("```", "\u200b```")
         # Slug is the load_skill call's argument; surface it so the
-        # model doesn't have to guess from the human label.
+        # model doesn't have to guess from the human label. For
+        # same-named skills from different authors (the market key's
+        # random suffix is opaque to the model), show the author so
+        # the model can pick the right entry.
+        author = (skill_authors or {}).get(slug, "")
+        label = f"**{name}** (`{slug}`)" + (f" — by {author}" if author else "")
         bullets.append(
-            f"- **{name}** (`{slug}`) — {safe_desc}" if safe_desc
-            else f"- **{name}** (`{slug}`)"
+            f"- {label} — {safe_desc}" if safe_desc else f"- {label}"
         )
     if not bullets:
         return ""
@@ -248,6 +254,7 @@ def _build_system_prompt(
     *,
     base_override: str | None = None,
     enabled_skills: list[Any] | None = None,
+    skill_authors: dict[str, str] | None = None,
 ) -> str:
     """Assemble the full system prompt.
 
@@ -268,7 +275,7 @@ def _build_system_prompt(
     """
     base = _resolve_system_prompt_base(base_override).rstrip()
     addition = (user_addition or "").strip()
-    skills_block = _build_skill_section(enabled_skills or [])
+    skills_block = _build_skill_section(enabled_skills or [], skill_authors)
     parts: list[str] = [base]
     if skills_block:
         parts.append(skills_block)
@@ -301,25 +308,26 @@ def _now_iso() -> str:
 
 
 def _coerce_messages(payload: list[dict[str, Any]]) -> list[Message]:
+    """Normalise wire messages to the LLM contract (role+content) and
+    carry per-message metadata (skills / mcp / tools / files / tool_calls
+    / segments / tool_call_id) so persistence keeps attachments and a
+    previous cancelled turn keeps its full context.
+
+    Dropping a malformed message here would shift zip-based pairing, so
+    the metadata splice happens in the SAME single pass — never re-pair
+    by position afterwards. Empty assistant messages (no content, no
+    tool_calls) are filtered out: providers reject them with 400
+    "content or tool_calls must be set", and they can appear in history
+    after an interrupted / failed turn."""
     out: list[Message] = []
     for m in payload:
         role = m.get("role", "user")
         content = m.get("content", "")
-        if isinstance(content, str):
-            out.append({"role": role, "content": content})  # type: ignore[typeddict-item]
-    return out
-
-
-def _attach_user_metadata(coerced: list[Message], raw: list[dict[str, Any]]) -> None:
-    """Carry per-message metadata from the wire payload into the
-    coerced messages list. ``_coerce_messages`` keeps only
-    role+content (matching the LLM contract); we want to remember
-    the user's skills/mcp/tools attachment for persistence, and —
-    crucially — the tool_calls on assistant messages plus the
-    ``tool_call_id`` on role=tool messages so a previous turn that
-    was cancelled mid-tool still carries its full context into
-    the next LLM call."""
-    for c, original in zip(coerced, raw):
+        if not isinstance(content, str):
+            continue
+        if role == "assistant" and not content.strip() and not m.get("tool_calls"):
+            continue
+        c: Message = {"role": role, "content": content}
         for key in (
             "skills",
             "mcp",
@@ -329,8 +337,18 @@ def _attach_user_metadata(coerced: list[Message], raw: list[dict[str, Any]]) -> 
             "segments",
             "tool_call_id",
         ):
-            if key in original and key not in c:
-                c[key] = original[key]  # type: ignore[literal-required]
+            if key in m:
+                c[key] = m[key]  # type: ignore[literal-required]
+        out.append(c)
+    return out
+
+
+def _attach_user_metadata(coerced: list[Message], raw: list[dict[str, Any]]) -> None:
+    """Legacy no-op: metadata is now spliced inside ``_coerce_messages``
+    during the same pass, so filtering a malformed message can never
+    shift the pairing. Kept for callers that still invoke it."""
+    del coerced, raw
+    return
 
 
 def _format_files_block(files: list[dict[str, Any]], user_text: str = "") -> str:
@@ -1379,6 +1397,13 @@ async def chat(
     messages = _coerce_messages(raw_messages)
     session_id = (body.get("session_id") or "").strip()
     assistant_message_id = (body.get("assistant_message_id") or "").strip()
+    # Per-skill author labels from the client (slug → market author). The
+    # desktop learns these via /market/sync; same-named skills from
+    # different authors become distinguishable in the model's listing.
+    raw_authors = body.get("skill_authors") or {}
+    skill_authors = {
+        str(k): str(v) for k, v in raw_authors.items() if isinstance(raw_authors, dict)
+    }
     # Lift the per-message metadata (skills / mcp / tools) off the
     # request payload so we can preserve it on persistence later.
     # ``_coerce_messages`` only carries role+content; the metadata
@@ -1425,6 +1450,7 @@ async def chat(
                 user_addition,
                 base_override=system_prompt_base,
                 enabled_skills=enabled_skills,
+                skill_authors=skill_authors,
             ),
         },
         *messages,

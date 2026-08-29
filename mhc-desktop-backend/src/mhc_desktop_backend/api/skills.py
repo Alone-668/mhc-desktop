@@ -59,14 +59,28 @@ def get_store(request: Request) -> SkillStoreProtocol:
 async def list_skills(
     store: SkillStoreProtocol = Depends(get_store),
 ) -> list[dict[str, Any]]:
-    return [s.public_dict() for s in await store.list()]
+    out = []
+    for s in await store.list():
+        d = s.public_dict()
+        try:
+            # Content fingerprint: fallback matcher, kept for compat.
+            d["sha"] = await store.content_sha(s.slug)
+        except SkillError:
+            d["sha"] = ""
+        out.append(d)
+    return out
 
 
 @router.get("/{slug}")
 async def get_skill(
     slug: str, store: SkillStoreProtocol = Depends(get_store)
 ) -> dict[str, Any]:
-    skill = await store.get(slug)
+    try:
+        skill = await store.get(slug)
+    except SkillError as e:
+        # Malformed SKILL.md (bad YAML frontmatter, missing file, …)
+        # is a client-fixable problem, not a server fault.
+        raise HTTPException(status_code=400, detail=str(e)) from None
     if skill is None:
         raise HTTPException(status_code=404, detail=f"skill '{slug}' not found")
     return skill.to_dict()

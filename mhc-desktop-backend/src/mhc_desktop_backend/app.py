@@ -15,9 +15,10 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,7 +28,9 @@ from fastapi.staticfiles import StaticFiles
 from mhc_desktop_backend import __version__
 from mhc_desktop_backend.api.auth import router as auth_router
 from mhc_desktop_backend.api.chat import router as chat_router
+from mhc_desktop_backend.api.market import router as market_router
 from mhc_desktop_backend.api.mcp import router as mcp_router
+from mhc_desktop_backend.api.usage import router as usage_router
 from mhc_desktop_backend.api.meta import router as meta_router
 from mhc_desktop_backend.api.metrics import router as metrics_router
 from mhc_desktop_backend.api.onboarding import router as onboarding_router
@@ -87,6 +90,10 @@ def create_app(
     content_packs_root: Path | None = None,
     meta: dict[str, Any] | None = None,
     cors_origins: list[str] | None = None,
+    market_base_url: str | None = None,
+    market_secret: str | None = None,
+    market_transport: Any | None = None,
+    market_usage_file: Any | None = None,
 ) -> FastAPI:
     """Build the FastAPI app.
 
@@ -235,6 +242,11 @@ def create_app(
     app.state.tool_executor_registry = tool_executor_registry
     app.state.content_packs_root = content_packs_root
     app.state.meta = seed_meta
+    # Skill market wiring (None = market disabled, /api/v1/market/* 503s).
+    app.state.market_base_url = market_base_url
+    app.state.market_secret = market_secret
+    app.state.market_transport = market_transport
+    app.state.market_usage_file = market_usage_file
 
     # Install auth middleware last so it sees the final app state.
     if auth is not None:
@@ -289,6 +301,8 @@ def create_app(
     app.include_router(chat_router)
     app.include_router(sessions_router)
     app.include_router(skills_router)
+    app.include_router(market_router)
+    app.include_router(usage_router)
     app.include_router(mcp_router)
     app.include_router(tools_router)
     app.include_router(prefs_router)

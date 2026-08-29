@@ -189,6 +189,7 @@ class SkillStoreProtocol(Protocol):
         *,
         overwrite: bool = False,
         origin: str = "imported",
+        slug: str | None = None,
     ) -> Skill: ...
     async def delete(self, slug: str) -> None: ...
     async def set_enabled(self, slug: str, enabled: bool) -> Skill: ...
@@ -200,7 +201,27 @@ class SkillStoreProtocol(Protocol):
         body: str | None = None,
     ) -> Skill: ...
     async def export(self, slug: str) -> bytes: ...
-    async def import_zip(self, data: bytes, *, origin: str = "imported") -> Skill: ...
+    async def import_zip(
+        self,
+        data: bytes,
+        *,
+        origin: str = "imported",
+        overwrite: bool = False,
+        slug: str | None = None,
+    ) -> Skill: ...
+
+    async def content_sha(self, slug: str) -> str:
+        """Deterministic content fingerprint used by market sync."""
+        raise NotImplementedError
+
+    async def get_state(self, slug: str) -> dict[str, Any]:
+        """Raw per-skill state entry (market sync metadata lives here)."""
+        raise NotImplementedError
+
+    async def patch_state(self, slug: str, patch: dict[str, Any]) -> None:
+        """Shallow-merge ``patch`` into the skill's state entry."""
+        raise NotImplementedError
+
     async def close(self) -> None: ...
 
 

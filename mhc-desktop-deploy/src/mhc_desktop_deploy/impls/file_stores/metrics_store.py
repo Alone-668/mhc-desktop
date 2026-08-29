@@ -49,11 +49,12 @@ from mhc_desktop_backend.metrics.protocols import (
 )
 from mhc_desktop_backend.metrics.types import (
     LLMCallRecord,
-    ToolCallRecord,
     RankingPage,
     SummaryBucket,
+    ToolCallRecord,
     TrendPoint,
 )
+
 from mhc_desktop_deploy.impls.file_stores.paths import METRICS_FILE
 
 logger = logging.getLogger("mhc_desktop_backend")
@@ -326,6 +327,6 @@ class InMemoryMetricsRepository:
 
 
 __all__ = [
-    "JSONLMetricsRepository",
     "InMemoryMetricsRepository",
+    "JSONLMetricsRepository",
 ]
