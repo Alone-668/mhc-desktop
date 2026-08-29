@@ -74,6 +74,10 @@ def _cfg(request: Request) -> tuple[httpx.AsyncClient, str, str]:
         base_url=base,
         timeout=MARKET_TIMEOUT,
         transport=getattr(request.app.state, "market_transport", None),
+        # trust_env=False — market is a local sidecar; don't route it
+        # through the user's shell / macOS system proxy (see
+        # llm/factory.py for the same guard on LLM clients).
+        trust_env=False,
     )
     return client, base, secret
 
