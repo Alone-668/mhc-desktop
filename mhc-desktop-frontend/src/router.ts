@@ -5,6 +5,7 @@ import MetricsView from "./views/MetricsView.vue"
 import ModelsView from "./views/ModelsView.vue"
 import SettingsView from "./views/SettingsView.vue"
 import SkillsView from "./views/SkillsView.vue"
+import MarketView from "./views/MarketView.vue"
 import MCPView from "./views/MCPView.vue"
 import ToolsView from "./views/ToolsView.vue"
 import { useAuthStore } from "./stores/auth"
@@ -16,7 +17,8 @@ export const router = createRouter({
     { path: "/login", name: "login", component: LoginView },
     { path: "/chat", name: "chat", component: ChatView },
     { path: "/models", name: "models", component: ModelsView },
-    { path: "/skills", name: "skills", component: SkillsView },
+    { path: "/skills", redirect: "/market" },
+    { path: "/market", name: "market", component: MarketView },
     { path: "/mcp", name: "mcp", component: MCPView },
     { path: "/tools", name: "tools", component: ToolsView },
     { path: "/metrics", name: "metrics", component: MetricsView },

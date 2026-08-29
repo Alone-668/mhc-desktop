@@ -190,15 +190,21 @@ export const useSessionStreamsStore = defineStore("sessionStreams", () => {
         h.state.toolCalls.length > 0 ||
         h.state.segments.length > 0
       if (hasLive) {
-        out.push({
-          role: "assistant",
-          content: h.state.assistantContent,
-          tool_calls:
-            h.state.toolCalls.length > 0 ? h.state.toolCalls : undefined,
-          segments:
-            h.state.segments.length > 0 ? h.state.segments : undefined,
-          cancelled: h.state.cancelled || undefined,
-        })
+        // 空 assistant（无内容且无工具调用）会让下一轮 LLM 请求
+        // 400 —— 只有真正有内容时才持久化，绝不写入脏历史。
+        const content = h.state.assistantContent
+        const hasToolCalls = h.state.toolCalls.length > 0
+        if (content.trim() !== "" || hasToolCalls) {
+          out.push({
+            role: "assistant",
+            content,
+            tool_calls:
+              h.state.toolCalls.length > 0 ? h.state.toolCalls : undefined,
+            segments:
+              h.state.segments.length > 0 ? h.state.segments : undefined,
+            cancelled: h.state.cancelled || undefined,
+          })
+        }
       }
     }
     return out

@@ -1,17 +1,65 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue"
-import { api, type Skill, type SkillDetail } from "../api/client"
+import { computed, onMounted, onUnmounted, ref } from "vue"
+import {
+  api,
+  type Skill,
+  type SkillDetail,
+} from "../api/client"
 import { useSkillsStore } from "../stores/skills"
+import { useAuthStore } from "../stores/auth"
 import Icon from "../components/Icon.vue"
+import MarketIcon from "../components/MarketIcon.vue"
 import { ask } from "../lib/confirm"
+import { showToast, friendlyError } from "../lib/toast"
 import { t } from "../i18n"
 
+const props = defineProps<{ filterQuery?: string }>()
+
 const store = useSkillsStore()
+const auth = useAuthStore()
+const syncTarget = computed(() => auth.user?.username ?? "")
+
+// Local skill filter, driven by the search bar in the market tab bar.
+function displayName(s: { name: string }): string {
+  return s.name
+}
+
+// 市场条目作者（来自同步清单），「我的技能」卡片上显示。
+function authorOf(slug: string): string {
+  return skillAuthors.value[slug] ?? ""
+}
+
+const filteredSkills = computed(() => {
+  const q = (props.filterQuery ?? "").trim().toLowerCase()
+  if (!q) return store.items
+  return store.items.filter(
+    (s) =>
+      s.name.toLowerCase().includes(q) ||
+      s.slug.toLowerCase().includes(q) ||
+      (s.description || "").toLowerCase().includes(q),
+  )
+})
 
 const importing = ref(false)
 type StatusLevel = "info" | "success" | "error"
 const status = ref<{ level: StatusLevel; message: string } | null>(null)
 const toggling = ref<string | null>(null)
+
+// 同步状态/动作来自共享单例（lib/marketSync）——轮询在 App.vue 应用级
+// 启动，不随本 tab 卸载而停止。
+import {
+  reminder,
+  conflictSlugs,
+  syncing,
+  resolving,
+  reminderIssues,
+  refreshSync,
+  execute as executeSync,
+  resolveConflict as resolveConflictApi,
+  skillAuthors,
+  skillMarketKeys,
+  delistedSlugs,
+} from "../lib/marketSync"
 
 function setStatus(level: StatusLevel, message: string) {
   status.value = { level, message }
@@ -25,10 +73,93 @@ const editing = ref(false)
 const editDescription = ref("")
 const editBody = ref("")
 const saving = ref(false)
+const publishing = ref(false)
+const publishCategory = ref<string>("other")
+const delisting = ref(false)
+
+const CATEGORIES = ["efficiency", "writing", "coding", "office", "other"] as const
+
+// 只有自己发布的技能才能下架：市场条目作者 == 当前用户，且条目未下架。
+function canDelist(slug: string): boolean {
+  if (delistedSlugs.value.has(slug)) return false
+  const author = skillAuthors.value[slug]
+  const key = skillMarketKeys.value[slug]
+  return !!key && !!author && author === (auth.user?.username ?? "")
+}
+
+async function publishSelected() {
+  if (!selected.value) return
+  clearStatus()
+  try {
+    const m = await api.publishSkill(selected.value.slug, publishCategory.value)
+    await refreshSync()  // 发布后立即刷新作者/市场 key，让下架按钮出现
+    showToast(t("skills.published", { name: m.display_name }), "success")
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    showToast(t("skills.publishFailed", { detail: friendlyError(msg) }), "error")
+  }
+}
+
+async function delistSelected() {
+  if (!selected.value) return
+  const key = skillMarketKeys.value[selected.value.slug]
+  if (!key) return
+  const ok = await ask({
+    title: t("skills.delistTitle"),
+    message: t("skills.delistConfirm", { name: selected.value.name }),
+    tone: "danger",
+    confirmLabel: t("skills.delist"),
+  })
+  if (!ok) return
+  delisting.value = true
+  clearStatus()
+  try {
+    await api.delistMarketSkill(key)
+    await Promise.all([store.refresh(), refreshSync()])
+    const detail = await api.getSkill(selected.value.slug)
+    selected.value = detail
+    showToast(t("skills.delisted", { name: detail.name }), "success")
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    showToast(t("skills.delistFailed", { detail: friendlyError(msg) }), "error")
+  } finally {
+    delisting.value = false
+  }
+}
+
+async function runSync() {
+  clearStatus()
+  const res = await executeSync()
+  if (res) {
+    conflictSlugs.value = res.conflicts
+    setStatus(
+      res.conflicts.length ? "info" : "success",
+      t("skills.synced", { pushed: res.pushed.length, pulled: res.pulled.length }),
+    )
+  }
+}
+
+async function resolveConflict(slug: string, choice: "local" | "remote") {
+  await resolveConflictApi(slug, choice)
+  setStatus("success", t("skills.conflictResolved", { name: slug }))
+}
 
 onMounted(() => {
   store.refresh()
+  refreshSync()
+  window.addEventListener("keydown", onKeydown)
 })
+
+onUnmounted(() => {
+  window.removeEventListener("keydown", onKeydown)
+})
+
+// ESC 关闭详情侧栏（编辑中先取消编辑）
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === "Escape" && selected.value) {
+    dismissDetail()
+  }
+}
 
 async function pickFolder() {
   clearStatus()
@@ -191,6 +322,16 @@ function clearSelection() {
   clearStatus()
 }
 
+// 遮罩 / ESC 关闭侧栏：编辑中先取消编辑（保留面板），避免误丢未保存内容。
+function dismissDetail() {
+  if (editing.value) {
+    cancelEdit()
+    setStatus("info", t("skills.editCancelled"))
+  } else {
+    clearSelection()
+  }
+}
+
 async function toggleEnabled(s: Skill) {
   if (toggling.value) return
   toggling.value = s.slug
@@ -208,17 +349,30 @@ async function toggleEnabled(s: Skill) {
 }
 
 async function deleteSkill(s: Skill) {
+  const isMarket = s.origin === "market"
   const ok = await ask({
     title: t("skills.confirmDeleteTitle"),
-    message: t("skills.confirmDelete", { name: s.name }),
+    message: isMarket
+      ? t("skills.confirmDeleteCloud", { name: s.name })
+      : t("skills.confirmDelete", { name: s.name }),
     tone: "danger",
     confirmLabel: t("common.delete"),
   })
   if (!ok) return
   try {
     await store.remove(s.slug)
+    // Mirror semantics: a local removal also drops the user's cloud
+    // copy, otherwise the next sync would push it right back.
+    if (isMarket) {
+      try {
+        await api.deleteMarketCopy(s.slug)
+      } catch {
+        /* 404 / offline — local removal still stands */
+      }
+    }
     if (selected.value?.slug === s.slug) clearSelection()
     setStatus("success", t("skills.deleted", { name: s.name }))
+    await refreshSync()
   } catch (e) {
     setStatus("error", e instanceof Error ? e.message : String(e))
   }
@@ -268,13 +422,13 @@ async function saveEdit() {
 </script>
 
 <template>
-  <section class="page">
+  <div class="mine-pane">
     <header class="head">
-      <div>
-        <h2>{{ t("skills.title") }}</h2>
-        <p class="hint">{{ t("skills.hint") }}</p>
-      </div>
       <div class="actions">
+        <button class="btn-secondary" :disabled="syncing" @click="runSync">
+          <Icon name="refresh" />
+          {{ t("skills.sync") }}
+        </button>
         <button class="btn-secondary" :disabled="importing" @click="pickFolder">
           <Icon name="folder" />
           {{ t("skills.importFolder") }}
@@ -294,6 +448,37 @@ async function saveEdit() {
       </div>
     </header>
 
+    <p v-if="conflictSlugs.length" class="status-banner status-error">
+      {{ t("skills.syncConflicts", { n: conflictSlugs.length }) }}
+      <span v-for="slug in conflictSlugs" :key="slug" class="conflict-row">
+        <code>{{ slug }}</code>
+        <button
+          class="btn-secondary"
+          :disabled="resolving === slug"
+          @click="resolveConflict(slug, 'local')"
+        >
+          {{ t("skills.conflictUseLocal") }}
+        </button>
+        <button
+          class="btn-secondary"
+          :disabled="resolving === slug"
+          @click="resolveConflict(slug, 'remote')"
+        >
+          {{ t("skills.conflictUseCloud") }}
+        </button>
+      </span>
+    </p>
+
+    <div v-if="reminder" class="sync-reminder">
+      <span>{{ t("market.syncReminder", { n: reminderIssues }) }}<template v-if="syncTarget"> · {{ t("market.syncTarget", { user: syncTarget }) }}</template></span>
+      <button class="btn-primary sm" @click="runSync">
+        {{ t("market.syncRun") }}
+      </button>
+      <button class="btn-secondary sm" @click="reminder = null">
+        {{ t("common.cancel") }}
+      </button>
+    </div>
+
     <p v-if="status" :class="['status-banner', `status-${status.level}`]">
       {{ status.message }}
     </p>
@@ -305,32 +490,34 @@ async function saveEdit() {
     </p>
 
     <div class="split">
-      <ul v-if="store.items.length > 0" class="list">
+      <ul v-if="filteredSkills.length > 0" class="list grid">
         <li
-          v-for="s in store.items"
+          v-for="s in filteredSkills"
           :key="s.slug"
-          class="card"
+          class="card skill-card"
           :class="{
             off: !s.enabled,
             selected: selected?.slug === s.slug,
           }"
           @click="selectBySlug(s.slug)"
         >
-          <div class="row">
-            <div class="grow">
-              <div class="title">
-                {{ s.name }}
-                <span
-                  v-if="s.origin === 'imported'"
-                  class="origin-badge"
-                >{{ t("skills.imported") }}</span>
-              </div>
-              <div class="desc">{{ s.description || t("skills.noDescription") }}</div>
-              <div class="meta">
-                <span class="slug">/{{ s.slug }}</span>
-                <span v-if="s.files.length > 0" class="files">+ {{ s.files.length }} files</span>
-              </div>
+          <div class="sc-top">
+            <MarketIcon :icon="s.icon" :name="displayName(s)" :size="48" />
+            <div class="sc-badges">
+              <span v-if="authorOf(s.slug)" class="origin-badge author-badge">{{ authorOf(s.slug) }}</span>
+              <span class="origin-badge">{{ t(`skills.${s.origin}`) }}</span>
             </div>
+          </div>
+          <div class="title">
+            {{ displayName(s) }}
+            <span v-if="authorOf(s.slug)" class="title-author">{{ t("skills.marketBy", { author: authorOf(s.slug) }) }}</span>
+          </div>
+          <div class="desc">{{ s.description || t("skills.noDescription") }}</div>
+          <div class="meta">
+            <span class="slug">/{{ s.slug }}</span>
+            <span v-if="s.files.length > 0" class="files">+ {{ s.files.length }} files</span>
+          </div>
+          <div class="sc-foot">
             <label
               class="switch"
               :title="s.enabled ? t('skills.disable') : t('skills.enable')"
@@ -344,6 +531,17 @@ async function saveEdit() {
               />
               <span class="slider" />
             </label>
+            <div class="sc-tools">
+              <span class="sc-hint">{{ s.enabled ? t("skills.enable") : t("skills.disable") }}</span>
+              <button
+                v-if="s.origin !== 'bundled'"
+                class="sc-remove"
+                :title="t('skills.remove')"
+                @click.stop="deleteSkill(s)"
+              >
+                <Icon name="trash" />
+              </button>
+            </div>
           </div>
         </li>
       </ul>
@@ -351,6 +549,9 @@ async function saveEdit() {
     </div>
 
     <!-- Detail pane (slides over on the right when a skill is selected) -->
+    <Transition name="fade">
+      <div v-if="selected" class="detail-mask" @click="dismissDetail" />
+    </Transition>
     <Transition name="pane">
       <aside v-if="selected" class="detail" @click.stop>
         <header class="detail-head">
@@ -363,6 +564,9 @@ async function saveEdit() {
             </h3>
             <div class="detail-sub">
               /{{ selected.slug }} · {{ selected.files.length }} {{ t("skills.files") }}
+              <span v-if="authorOf(selected.slug)" class="detail-author">
+                · {{ t("skills.marketBy", { author: authorOf(selected.slug) }) }}
+              </span>
             </div>
           </div>
           <button class="close" :title="t('common.cancel')" @click="clearSelection">
@@ -382,6 +586,26 @@ async function saveEdit() {
           <button class="btn-danger" @click="deleteSkill(selected)">
             <Icon name="trash" />
             {{ t("common.delete") }}
+          </button>
+        </div>
+        <div
+          v-if="selected.origin !== 'bundled'"
+          class="detail-actions publish-row"
+        >
+          <select v-model="publishCategory" class="market-cat">
+            <option v-for="c in CATEGORIES" :key="c" :value="c">{{ c }}</option>
+          </select>
+          <button class="btn-secondary" :disabled="publishing" @click="publishSelected">
+            <Icon name="upload" />
+            {{ t("skills.publish") }}
+          </button>
+          <button
+            v-if="canDelist(selected.slug)"
+            class="btn-danger"
+            :disabled="delisting"
+            @click="delistSelected"
+          >
+            {{ t("skills.delist") }}
           </button>
         </div>
 
@@ -430,20 +654,14 @@ async function saveEdit() {
         </section>
       </aside>
     </Transition>
-  </section>
+  </div>
 </template>
 
 <style scoped>
-.page {
-  position: relative;
+.mine-pane {
   display: flex;
   flex-direction: column;
-  max-width: 880px;
-  height: 100%;
-  margin: 0 auto;
-  padding: 32px 24px;
   color: var(--text);
-  overflow-y: auto;
 }
 .head {
   display: flex;
@@ -507,6 +725,11 @@ async function saveEdit() {
   display: grid;
   gap: 8px;
 }
+.list.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
 .card {
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -515,6 +738,55 @@ async function saveEdit() {
   cursor: pointer;
   transition: border-color 120ms ease, background 120ms ease, opacity 120ms ease;
 }
+.card.skill-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+.card.skill-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0,0,0,.08);
+}
+.sc-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sc-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-faint);
+}
+.sc-hint {
+  font-size: 12px;
+  color: var(--text-mid);
+}
+.sc-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sc-remove {
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  transition: color 120ms ease, background 120ms ease;
+}
+.sc-remove:hover {
+  color: var(--danger);
+  background: var(--danger-bg, rgba(220,38,38,.08));
+}
+
 .card:hover {
   border-color: var(--border-mid);
 }
@@ -577,6 +849,26 @@ async function saveEdit() {
 .slug {
   font-family: ui-monospace, "JetBrains Mono", monospace;
 }
+.author-badge {
+  background: var(--accent-soft, rgba(37, 99, 235, 0.12));
+  color: var(--accent, #2563eb);
+}
+.sc-badges {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.title-author {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-faint);
+  margin-left: 6px;
+  white-space: nowrap;
+}
+.detail-author {
+  color: var(--text-mid);
+}
 
 /* Toggle switch */
 .switch {
@@ -624,6 +916,22 @@ async function saveEdit() {
 }
 
 /* Detail pane */
+/* 详情侧栏背后的半透明遮罩：点击空白关闭 */
+.detail-mask {
+  position: fixed;
+  inset: 0;
+  top: 36px;
+  background: rgba(0, 0, 0, 0.28);
+  z-index: 19;
+}
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.18s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
 .detail {
   position: fixed;
   top: 36px;  /* below TitleBar */
@@ -813,6 +1121,23 @@ async function saveEdit() {
   background: var(--danger-bg);
 }
 
+/* Sync reminder + verification panel */
+.sync-reminder {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  background: var(--bg-subtle, #f6f7f9);
+  border: 1px solid var(--border);
+}
+.btn-primary.sm,
+.btn-secondary.sm {
+  padding: 3px 10px;
+  font-size: 12px;
+}
 /* Slide-in transition for the detail pane */
 .pane-enter-active,
 .pane-leave-active {
@@ -822,5 +1147,109 @@ async function saveEdit() {
 .pane-leave-to {
   transform: translateX(20px);
   opacity: 0;
+}
+
+.conflict-row {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 12px;
+  align-items: center;
+}
+.publish-row {
+  margin-top: 8px;
+}
+
+/* Promo bar: user stories */
+.promo-bar {
+  margin-bottom: 16px;
+}
+.promo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.share-btn.solo {
+  margin-bottom: 12px;
+}
+.promo-row {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.promo-card {
+  min-width: 220px;
+  max-width: 260px;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: linear-gradient(
+    135deg,
+    hsl(var(--ph, 220) 60% 96%),
+    hsl(calc(var(--ph, 220) + 40) 60% 92%)
+  );
+}
+.promo-card:hover {
+  border-color: var(--text);
+}
+.promo-skill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+.promo-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.promo-meta {
+  font-size: 12px;
+  color: var(--text-muted, #888);
+}
+
+/* Story article */
+.story-article {
+  max-width: 760px;
+  margin: 0 auto;
+}
+.story-article .back {
+  margin-bottom: 16px;
+}
+.chev-back {
+  font-size: 16px;
+  margin-right: 4px;
+}
+.story-article header h2 {
+  margin: 0 0 4px;
+}
+.story-meta {
+  font-size: 13px;
+  color: var(--text-muted, #888);
+  margin-bottom: 20px;
+}
+.story-body {
+  line-height: 1.7;
+  margin-bottom: 24px;
+}
+.story-skill {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+}
+.story-skill .desc {
+  font-size: 13px;
+}
+.story-form {
+  margin-bottom: 12px;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
 }
 </style>

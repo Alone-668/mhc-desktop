@@ -13,6 +13,7 @@ import ToolCallCapsule from "../components/ToolCallCapsule.vue"
 import ThinkingBlock from "../components/ThinkingBlock.vue"
 import VirtualMessageList from "../components/VirtualMessageList.vue"
 import { t, pickI18n } from "../i18n"
+import { skillAuthors } from "../lib/marketSync"
 
 const store = useProvidersStore()
 const sessions = useSessionsStore()
@@ -721,6 +722,10 @@ async function send() {
     model: currentModelCode.value,
     mcp: attachedMCPs,
     tools: attachedTools,
+    // 同名技能的作者标签：模型在系统提示里靠它区分不同作者的条目。
+    skill_authors: Object.fromEntries(
+      skills.enabled.map((s) => [s.slug, skillAuthors.value[s.slug] ?? ""]),
+    ),
     // LLM-shaped: assistant messages keep their tool_calls and the
     // segment timeline is expanded into role=tool result messages.
     // Without this, a turn that got cancelled mid-tool arrives at
@@ -1031,7 +1036,10 @@ const sendToolSlugs = computed(() => tools.enabledTools.map((t) => t.slug))
 /** Sections for the composer capsule: all three, even at zero. */
 function sendCapSections(): CapSection[] {
   return [
-    { title: t("cap.skills"), icon: "package", entries: capEntriesBySlug(skills.items, sendSkillSlugs.value) },
+    { title: t("cap.skills"), icon: "package", entries: capEntriesBySlug(skills.items, sendSkillSlugs.value, (s) => {
+      const a = skillAuthors.value[(s as { slug: string }).slug]
+      return a ? t("skills.marketBy", { author: a }) : ""
+    }) },
     { title: t("cap.mcp"), icon: "server", entries: capEntriesBySlug(mcps.items, sendMcpSlugs.value) },
     { title: t("cap.tools"), icon: "wrench", entries: capEntriesBySlug(tools.items, sendToolSlugs.value, (t) => `(${t.kind})`) },
   ]
