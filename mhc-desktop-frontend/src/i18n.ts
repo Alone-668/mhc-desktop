@@ -91,6 +91,13 @@ const en: Record<string, string> = {
   "chat.cancelled": "Response cancelled",
   "chat.cancelledTitle": "This reply was stopped mid-generation; the partial content is kept.",
   "chat.streaming": "Generating…",
+  "chat.voiceInput": "Voice input — local speech recognition (sherpa-onnx)",
+  "chat.voiceStop": "Stop recording",
+  "chat.voiceLoading": "Loading speech model…",
+  "chat.voiceError": "Voice input unavailable: {message}",
+  "chat.voiceStageMic": "Opening mic",
+  "chat.voiceStageModel": "Loading model",
+  "chat.voiceStageRecord": "Listening",
 
   // mcp
   "mcp.title": "MCP",
@@ -485,6 +492,13 @@ const zh: Record<string, string> = {
   "chat.cancelled": "已取消",
   "chat.cancelledTitle": "该回复在生成中途被停止，已保留已输出的部分内容。",
   "chat.streaming": "正在生成…",
+  "chat.voiceInput": "语音输入 — 本地语音识别（sherpa-onnx）",
+  "chat.voiceStop": "停止录音",
+  "chat.voiceLoading": "正在加载语音模型…",
+  "chat.voiceError": "语音输入不可用：{message}",
+  "chat.voiceStageMic": "打开麦克风",
+  "chat.voiceStageModel": "加载模型",
+  "chat.voiceStageRecord": "收音中",
 
   // mcp
   "mcp.title": "MCP",
