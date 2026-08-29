@@ -44,6 +44,7 @@ from fastapi.responses import StreamingResponse
 from minimal_harness.llm.llm import StreamStalledError
 from minimal_harness.memory import Message
 
+from mhc_desktop_backend.api._user_context import current_user_id
 from mhc_desktop_backend.llm import build_provider
 from mhc_desktop_backend.mcp import (
     MCPError,
@@ -465,6 +466,7 @@ async def _event_stream(
     manager_for_calls=None,
     session_store: SessionStoreProtocol | None = None,
     metrics_repo: MetricsRepositoryProtocol | None = None,
+    user_id: str = "",
     chat_policy: ChatPolicy | None = None,
     tool_executor_registry: ToolExecutorRegistryProtocol | None = None,
     system_prompt_base: str | None = None,
@@ -619,6 +621,7 @@ async def _event_stream(
         # silently miss it — same root cause as mh-gateway's #85).
         await _record_llm(
             metrics_repo,
+            user_id=user_id,
             session_id=session_id,
             provider=provider_name,
             model=model or provider.default_model,
@@ -717,6 +720,7 @@ async def _event_stream(
                 await _persist_partial()
                 await _record_llm(
                     metrics_repo,
+                    user_id=user_id,
                     session_id=session_id,
                     provider=provider_name,
                     model=model or provider.default_model,
@@ -739,6 +743,7 @@ async def _event_stream(
         final_response = llm_stream.response
         await _record_llm(
             metrics_repo,
+            user_id=user_id,
             session_id=session_id,
             provider=provider_name,
             model=model or provider.default_model,
@@ -750,6 +755,7 @@ async def _event_stream(
         logger.warning("chat.stream.stalled")
         await _record_llm(
             metrics_repo,
+            user_id=user_id,
             session_id=session_id,
             provider=provider_name,
             model=model or provider.default_model,
@@ -763,6 +769,7 @@ async def _event_stream(
         logger.exception("chat.stream.error")
         await _record_llm(
             metrics_repo,
+            user_id=user_id,
             session_id=session_id,
             provider=provider_name,
             model=model or provider.default_model,
@@ -956,6 +963,7 @@ async def _event_stream(
                 # if it's still open.
                 await _record_tool(
                     metrics_repo,
+                    user_id=user_id,
                     session_id=session_id,
                     name=name,
                     started_at=tool_started_at,
@@ -1003,6 +1011,7 @@ async def _event_stream(
                 error_msg = text
                 await _record_tool(
                     metrics_repo,
+                    user_id=user_id,
                     session_id=session_id,
                     name=name,
                     started_at=tool_started_at,
@@ -1027,6 +1036,7 @@ async def _event_stream(
             if error_msg is None:
                 await _record_tool(
                     metrics_repo,
+                    user_id=user_id,
                     session_id=session_id,
                     name=name,
                     started_at=tool_started_at,
@@ -1087,6 +1097,7 @@ async def _event_stream(
             logger.exception("chat.tool.followup.error")
             await _record_llm(
                 metrics_repo,
+                user_id=user_id,
                 session_id=session_id,
                 provider=provider_name,
                 model=model or provider.default_model,
@@ -1105,6 +1116,7 @@ async def _event_stream(
                         pass
                     await _record_llm(
                         metrics_repo,
+                        user_id=user_id,
                         session_id=session_id,
                         provider=provider_name,
                         model=model or provider.default_model,
@@ -1125,6 +1137,7 @@ async def _event_stream(
             final_response = llm_stream2.response
             await _record_llm(
                 metrics_repo,
+                user_id=user_id,
                 session_id=session_id,
                 provider=provider_name,
                 model=model or provider.default_model,
@@ -1136,6 +1149,7 @@ async def _event_stream(
             logger.warning("chat.stream.stalled")
             await _record_llm(
                 metrics_repo,
+                user_id=user_id,
                 session_id=session_id,
                 provider=provider_name,
                 model=model or provider.default_model,
@@ -1236,6 +1250,7 @@ async def _record_llm(
     started_at: float,
     final_response: Any,
     cancelled: bool,
+    user_id: str = "",
 ) -> None:
     """Persist one LLM call's metrics.
 
@@ -1273,6 +1288,7 @@ async def _record_llm(
                 completion_tokens=completion_tokens,
                 duration_ms=duration_ms,
                 status=status,
+                user_id=user_id,
                 cancelled=cancelled,
             )
         )
@@ -1289,6 +1305,7 @@ async def _record_tool(
     ok: bool,
     error: str = "",
     args: dict[str, Any] | None = None,
+    user_id: str = "",
 ) -> None:
     """Record one finished tool invocation as a metric.
 
@@ -1320,6 +1337,7 @@ async def _record_tool(
                 session_id=session_id,
                 kind="tool",
                 name=name,
+                user_id=user_id,
                 duration_ms=duration_ms,
                 status="ok" if ok else "error",
                 error=error,
@@ -1344,6 +1362,7 @@ async def _record_tool(
                         session_id=session_id,
                         kind="skill",
                         name=slug.strip(),
+                        user_id=user_id,
                         duration_ms=duration_ms,
                         status="ok" if ok else "error",
                         error=error,
@@ -1505,6 +1524,7 @@ async def chat(
     # loaded skill's slug. That counter is what the
     # "技能使用排名" dashboard rolls up.
     metrics_repo = get_metrics_repo(request)
+    user_id = current_user_id(request)
     if metrics_repo is not None:
         attached_mcps: list[str] = (
             raw_mcps if isinstance(raw_mcps, list) else []
@@ -1525,6 +1545,7 @@ async def chat(
                     ToolCallRecord(
                         ts=_now_iso(),
                         session_id=session_id,
+                        user_id=user_id,
                         kind="mcp",
                         name=str(slug),
                         status="ok" if ok else "error",
@@ -1663,6 +1684,7 @@ async def chat(
                 manager_for_calls=mcp_runner,
                 session_store=session_store,
                 metrics_repo=get_metrics_repo(request),
+                user_id=user_id,
                 chat_policy=chat_policy,
                 tool_executor_registry=tool_executor_registry,
                 system_prompt_base=system_prompt_base,

@@ -14,6 +14,7 @@ import ThinkingBlock from "../components/ThinkingBlock.vue"
 import VirtualMessageList from "../components/VirtualMessageList.vue"
 import { t, pickI18n } from "../i18n"
 import { skillAuthors } from "../lib/marketSync"
+import { getVoiceState, onVoiceState, onVoiceLevel, startVoice, stopVoice, type VoiceState } from "../lib/voiceInput"
 
 const store = useProvidersStore()
 const sessions = useSessionsStore()
@@ -56,7 +57,37 @@ const modelPickerEl = ref<HTMLElement | null>(null)
 const composerEl = ref<HTMLTextAreaElement | null>(null)
 const scrollerEl = ref<InstanceType<typeof VirtualMessageList> | null>(null)
 const stickToBottom = ref(true)
+/** State of the sherpa-onnx voice input on the composer. */
+const voice = ref<VoiceState>(getVoiceState())
+/** Text present in the composer when recording started; spoken text
+ *  is appended after it and the whole thing lands back in ``input``. */
+const voicePrefix = ref("")
+/** Live mic loudness 0..1, updated every animation frame while
+ *  recording; drives the waveform bars in the composer. */
+const voiceLevel = ref(0)
+/**
+ * Static per-bar weights (bell curve) so the live waveform has a
+ * natural rounded silhouette; each bar's height = level × weight.
+ */
+const BAR_COUNT = 30
+const barWeights = Array.from({ length: BAR_COUNT }, (_, i) => {
+  const x = (i - (BAR_COUNT - 1) / 2) / ((BAR_COUNT - 1) / 2)
+  return Math.max(0.06, 1 - Math.pow(Math.abs(x), 1.7))
+})
+function barHeight(i: number, level: number): string {
+  return `${(level * 30 * barWeights[i] + 4).toFixed(1)}px`
+}
 let unsubBus: (() => void) | null = null
+let unsubLevel: (() => void) | null = null
+
+// Live-update the mic button from the shared voice state (the module
+// is a singleton; the listener is registered once at setup).
+onVoiceState((s) => {
+  voice.value = s
+})
+unsubLevel = onVoiceLevel((l) => {
+  voiceLevel.value = l
+})
 
 const enabledProviders = computed(() =>
   store.items.filter((p) => p.enabled !== false),
@@ -157,6 +188,10 @@ onMounted(async () => {
 onBeforeUnmount(async () => {
   unsubBus?.()
   unsubBus = null
+  unsubLevel?.()
+  unsubLevel = null
+  // Stop any in-flight recording; the wasm runtime stays loaded.
+  if (voice.value === "listening") stopVoice()
   // Best-effort graceful shutdown — ask the bus to ask the backend
   // to cancel every running stream so the process can exit cleanly
   // even if the user closes the window mid-stream.
@@ -661,7 +696,42 @@ function _safeStringifyArgs(args: Record<string, unknown>): string {
   }
 }
 
+/** Toggle the composer's voice input. While listening, every
+ *  recognized segment is streamed into ``input`` (prefixed by
+ *  whatever the user had typed). On stop the final transcript stays
+ *  in the box for editing before send. */
+async function toggleVoice() {
+  if (voice.value === "loading") return
+  if (voice.value === "listening") {
+    const text = stopVoice()
+    input.value = voicePrefix.value
+      ? text
+        ? `${voicePrefix.value} ${text}`
+        : voicePrefix.value
+      : text
+    autoresize()
+    return
+  }
+  voicePrefix.value = input.value
+  try {
+    await startVoice((partial) => {
+      input.value = voicePrefix.value
+        ? `${voicePrefix.value} ${partial}`
+        : partial
+      autoresize()
+    })
+  } catch (err) {
+    alert(t("chat.voiceError", { message: String(err instanceof Error ? err.message : err) }))
+  }
+}
+
 async function send() {
+  // If the user hits Enter while recording, finalize the transcript
+  // first so the last ~0.5 s of audio isn't lost, then send as usual.
+  if (voice.value === "listening") {
+    const spoken = stopVoice()
+    if (spoken) input.value = voicePrefix.value ? `${voicePrefix.value} ${spoken}` : spoken
+  }
   const text = input.value.trim()
   const files = attachedFiles.value
   // Empty body OR file-only are both valid sends — the user
@@ -1388,6 +1458,45 @@ function groupTimelineSegments(
           @change="onFilePicked"
         />
 
+        <!-- Voice status strip: shows the current stage (mic → model →
+             record) while configuring, and a live volume waveform while
+             recording so the mic visibly reacts to speech. -->
+        <div
+          v-if="voice === 'mic' || voice === 'loading' || voice === 'listening'"
+          class="voice-status"
+          :class="voice"
+        >
+          <div class="voice-stages">
+            <span
+              class="voice-stage"
+              :class="{ done: voice !== 'mic', active: voice === 'mic' }"
+            >
+              <span class="voice-stage-dot"></span>{{ t("chat.voiceStageMic") }}
+            </span>
+            <span
+              class="voice-stage"
+              :class="{ done: voice === 'listening', active: voice === 'loading' }"
+            >
+              <span class="voice-stage-dot"></span>{{ t("chat.voiceStageModel") }}
+            </span>
+            <span
+              class="voice-stage"
+              :class="{ active: voice === 'listening' }"
+            >
+              <span class="voice-stage-dot"></span>{{ t("chat.voiceStageRecord") }}
+            </span>
+          </div>
+          <div v-if="voice === 'listening'" class="voice-wave" :title="t('chat.voiceStop')">
+            <span
+              v-for="i in BAR_COUNT"
+              :key="i"
+              class="voice-bar"
+              :style="{ height: barHeight(i - 1, voiceLevel) }"
+            ></span>
+          </div>
+          <div v-else class="voice-loading"><span class="voice-spinner"></span></div>
+        </div>
+
         <div class="actions">
           <div class="actions-left">
             <button
@@ -1418,6 +1527,28 @@ function groupTimelineSegments(
               @click="openFilePicker"
             >
               <Icon name="paperclip" />
+            </button>
+
+            <!-- Voice input: sherpa-onnx WASM, fully local. Click to
+                 start listening, click again to stop and drop the
+                 transcript into the box. First use lazily loads the
+                 speech model (~200 MB from disk). -->
+            <button
+              class="ax ax-icon"
+              :class="{ 'ax-voice-active': voice === 'listening' }"
+              type="button"
+              :title="
+                voice === 'listening'
+                  ? t('chat.voiceStop')
+                  : voice === 'loading'
+                    ? t('chat.voiceLoading')
+                    : t('chat.voiceInput')
+              "
+              :aria-pressed="voice === 'listening'"
+              :disabled="voice === 'loading' || voice === 'mic'"
+              @click="toggleVoice"
+            >
+              <Icon name="mic" />
             </button>
 
             <div class="model-picker" ref="modelPickerEl">
@@ -2038,6 +2169,104 @@ function groupTimelineSegments(
   width: 32px;
   height: 32px;
   border-radius: 10px;
+}
+
+/* Mic button while recording: high-contrast theme-aware state (black
+   in light mode, white in dark) so it reads against the composer. */
+.ax-voice-active {
+  color: var(--text) !important;
+  border-color: var(--text) !important;
+  background: color-mix(in srgb, var(--text) 8%, var(--bg)) !important;
+}
+.ax-voice-active svg {
+  animation: voice-pulse 1.4s ease-in-out infinite;
+}
+@keyframes voice-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* ── Voice status strip (stages + live waveform) ────────────── */
+.voice-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 20px 4px;
+  border-top: 1px dashed var(--border);
+  min-height: 24px;
+}
+.voice-stages {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  overflow: hidden;
+}
+.voice-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-faint);
+  transition: color 160ms ease;
+  white-space: nowrap;
+}
+.voice-stage-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--border);
+  transition: background 160ms ease, box-shadow 160ms ease;
+}
+.voice-stage.done {
+  color: var(--text-mid);
+}
+.voice-stage.done .voice-stage-dot {
+  background: var(--accent);
+}
+.voice-stage.active {
+  color: var(--text);
+}
+.voice-stage.active .voice-stage-dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+  animation: voice-pulse 1.2s ease-in-out infinite;
+}
+.voice-status.listening .voice-stage.active .voice-stage-dot {
+  background: var(--text);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 20%, transparent);
+}
+.voice-wave {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 42px;
+  flex-shrink: 0;
+}
+.voice-bar {
+  width: 3px;
+  border-radius: 999px;
+  background: var(--text);
+  min-height: 4px;
+  transition: height 60ms ease-out;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--text) 30%, transparent);
+}
+.voice-loading {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.voice-spinner {
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  animation: voice-spin 0.7s linear infinite;
+}
+@keyframes voice-spin {
+  to { transform: rotate(360deg); }
 }
 
 .ax-pill {

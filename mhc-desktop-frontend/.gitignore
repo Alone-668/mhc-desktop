@@ -7,3 +7,6 @@ dist/
 .DS_Store
 tsconfig.tsbuildinfo
 *.tsbuildinfo
+
+# sherpa-onnx WASM voice model (~203MB) — not committed, see docs/PACKAGING.md 6.4
+public/sherpa/
